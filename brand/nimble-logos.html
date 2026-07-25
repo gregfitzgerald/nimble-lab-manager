@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nimble -- logo &amp; icon concepts</title>
+<style>
+  :root { --ink:#141414; --muted:#666; --line:#ddd; --bg:#fff; --panel:#fafafa; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: Arial, Helvetica, sans-serif; color:var(--ink); background:var(--bg); line-height:1.5; }
+  header { padding:28px 32px 10px; border-bottom:2px solid var(--ink); }
+  h1 { margin:0 0 4px; font-size:22px; }
+  header p { margin:0; color:var(--muted); font-size:14px; max-width:74ch; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(360px,1fr)); gap:18px; padding:24px 32px 40px; }
+  .card { border:1px solid var(--line); background:var(--bg); display:flex; flex-direction:column; }
+  .card h2 { margin:0; font-size:15px; padding:14px 16px 0; }
+  .card .why { margin:2px 16px 10px; color:var(--muted); font-size:13px; min-height:52px; }
+  .previews { display:flex; align-items:flex-end; gap:20px; padding:6px 16px 14px; flex-wrap:wrap; }
+  .swatch { display:flex; flex-direction:column; align-items:center; gap:7px; }
+  .swatch .cap { font-size:11px; color:var(--muted); }
+  .chip { display:inline-flex; align-items:center; justify-content:center; padding:8px; }
+  .on-light { background:var(--bg); color:var(--ink); border:1px solid var(--line); }
+  .on-dark  { background:#141414; color:#fff; border:1px solid #141414; }
+  .lockup { display:flex; align-items:center; gap:11px; padding:12px 16px 18px; border-top:1px solid var(--line); }
+  .lockup .word { font-size:20px; font-weight:700; letter-spacing:-.01em; line-height:1.05; }
+  .lockup .word small { display:block; font-size:10px; font-weight:400; letter-spacing:.16em; color:var(--muted); text-transform:uppercase; }
+  svg.ico { display:block; }
+  .note { padding:0 32px 44px; color:var(--muted); font-size:13px; max-width:82ch; }
+  .note b { color:var(--ink); }
+  .note code { background:var(--panel); border:1px solid var(--line); padding:1px 5px; }
+</style>
+</head>
+<body>
+
+<!-- glyph definitions: all monochrome via currentColor -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+
+  <symbol id="g-mono" viewBox="0 0 64 64">
+    <rect x="5" y="5" width="54" height="54" rx="12" fill="none" stroke="currentColor" stroke-width="4"/>
+    <path d="M21 46 V19 L43 46 V19" fill="none" stroke="currentColor" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+
+  <symbol id="g-flask" viewBox="0 0 64 64">
+    <path d="M25 9 h14 M28 9 v14 L15 48 a5.5 5.5 0 0 0 5 8.5 h24 a5.5 5.5 0 0 0 5-8.5 L36 23 V9"
+          fill="none" stroke="currentColor" stroke-width="3.6" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M22 40 h20" stroke="currentColor" stroke-width="3.6" stroke-linecap="round"/>
+    <path d="M45 12 q9.5 6.5 5.5 18.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+  </symbol>
+
+  <symbol id="g-hex" viewBox="0 0 64 64">
+    <path d="M32 6 L54 18.5 V45.5 L32 58 L10 45.5 V18.5 Z" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linejoin="round"/>
+    <path d="M24 43 V23 L40 43 V23" fill="none" stroke="currentColor" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+
+  <symbol id="g-north" viewBox="0 0 64 64">
+    <rect x="5" y="5" width="54" height="54" rx="12" fill="none" stroke="currentColor" stroke-width="4"/>
+    <path d="M21 47 V24 L43 47 V24" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M37 29 L43 18 L49 29" fill="none" stroke="currentColor" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+
+  <symbol id="g-grid" viewBox="0 0 64 64">
+    <rect x="8" y="8" width="48" height="48" rx="6" fill="none" stroke="currentColor" stroke-width="3.6"/>
+    <path d="M32 8 V56 M8 32 H56" stroke="currentColor" stroke-width="3"/>
+    <rect x="34.5" y="34.5" width="19" height="19" fill="currentColor"/>
+  </symbol>
+
+  <symbol id="g-drop" viewBox="0 0 64 64">
+    <path d="M32 7 C32 7 49 27 49 39 a17 17 0 1 1 -34 0 C15 27 32 7 32 7 Z" fill="none" stroke="currentColor" stroke-width="3.4"/>
+    <path d="M25 47 V33 L39 47 V33" fill="none" stroke="currentColor" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+
+</defs></svg>
+
+<header>
+  <h1>Nimble &mdash; logo &amp; icon concepts</h1>
+  <p>Six directions, all monochrome so they sit inside the app's spartan aesthetic and read
+     as a favicon at 16&nbsp;px. Each is a vector drawn with <code>currentColor</code>, so the
+     same glyph works on light and dark and can be recolored in one line. Pick one and I'll
+     wire it into the sidebar brand + browser favicon.</p>
+</header>
+
+<div class="grid">
+
+  <div class="card">
+    <h2>1 &middot; Monogram</h2>
+    <div class="why">A confident geometric <b>N</b> in a soft square &mdash; clean, institutional,
+      unmistakable at any size. The safest, most scalable favicon.</div>
+    <div class="previews">
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="16" height="16"><use href="#g-mono"/></svg></span><span class="cap">16&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="28" height="28"><use href="#g-mono"/></svg></span><span class="cap">28&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="56" height="56"><use href="#g-mono"/></svg></span><span class="cap">56&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-dark"><svg class="ico" width="28" height="28"><use href="#g-mono"/></svg></span><span class="cap">on dark</span></div>
+    </div>
+    <div class="lockup"><span class="chip on-light" style="padding:5px"><svg class="ico" width="26" height="26"><use href="#g-mono"/></svg></span><span class="word">Nimble<small>Lab Manager</small></span></div>
+  </div>
+
+  <div class="card">
+    <h2>2 &middot; Nimble flask</h2>
+    <div class="why">An Erlenmeyer flask with a single swift arc &mdash; "lab" plus a sense of
+      motion and agility. The warmest, most on-theme mark for a bench tool.</div>
+    <div class="previews">
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="16" height="16"><use href="#g-flask"/></svg></span><span class="cap">16&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="28" height="28"><use href="#g-flask"/></svg></span><span class="cap">28&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="56" height="56"><use href="#g-flask"/></svg></span><span class="cap">56&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-dark"><svg class="ico" width="28" height="28"><use href="#g-flask"/></svg></span><span class="cap">on dark</span></div>
+    </div>
+    <div class="lockup"><span class="chip on-light" style="padding:5px"><svg class="ico" width="26" height="26"><use href="#g-flask"/></svg></span><span class="word">Nimble<small>Lab Manager</small></span></div>
+  </div>
+
+  <div class="card">
+    <h2>3 &middot; Hex monogram</h2>
+    <div class="why">The chemistry hexagon carrying an <b>N</b> &mdash; reads as science plus a
+      monogram. Structured and "molecular" without being literal.</div>
+    <div class="previews">
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="16" height="16"><use href="#g-hex"/></svg></span><span class="cap">16&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="28" height="28"><use href="#g-hex"/></svg></span><span class="cap">28&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="56" height="56"><use href="#g-hex"/></svg></span><span class="cap">56&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-dark"><svg class="ico" width="28" height="28"><use href="#g-hex"/></svg></span><span class="cap">on dark</span></div>
+    </div>
+    <div class="lockup"><span class="chip on-light" style="padding:5px"><svg class="ico" width="26" height="26"><use href="#g-hex"/></svg></span><span class="word">Nimble<small>Lab Manager</small></span></div>
+  </div>
+
+  <div class="card">
+    <h2>4 &middot; True-north N</h2>
+    <div class="why">An <b>N</b> capped by an upward arrow &mdash; "nimble," directional, a little
+      kinetic. Doubles nicely as a navigation / "you are here" cue.</div>
+    <div class="previews">
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="16" height="16"><use href="#g-north"/></svg></span><span class="cap">16&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="28" height="28"><use href="#g-north"/></svg></span><span class="cap">28&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="56" height="56"><use href="#g-north"/></svg></span><span class="cap">56&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-dark"><svg class="ico" width="28" height="28"><use href="#g-north"/></svg></span><span class="cap">on dark</span></div>
+    </div>
+    <div class="lockup"><span class="chip on-light" style="padding:5px"><svg class="ico" width="26" height="26"><use href="#g-north"/></svg></span><span class="word">Nimble<small>Lab Manager</small></span></div>
+  </div>
+
+  <div class="card">
+    <h2>5 &middot; Rack &amp; slot</h2>
+    <div class="why">A storage grid with one occupied slot &mdash; speaks directly to
+      inventory and where things live. The most "what the product does" mark.</div>
+    <div class="previews">
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="16" height="16"><use href="#g-grid"/></svg></span><span class="cap">16&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="28" height="28"><use href="#g-grid"/></svg></span><span class="cap">28&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="56" height="56"><use href="#g-grid"/></svg></span><span class="cap">56&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-dark"><svg class="ico" width="28" height="28"><use href="#g-grid"/></svg></span><span class="cap">on dark</span></div>
+    </div>
+    <div class="lockup"><span class="chip on-light" style="padding:5px"><svg class="ico" width="26" height="26"><use href="#g-grid"/></svg></span><span class="word">Nimble<small>Lab Manager</small></span></div>
+  </div>
+
+  <div class="card">
+    <h2>6 &middot; Droplet mark</h2>
+    <div class="why">A pipette droplet holding an <b>N</b> &mdash; liquid handling, the daily
+      reality of the bench. Distinctive and soft; a nice off-monogram option.</div>
+    <div class="previews">
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="16" height="16"><use href="#g-drop"/></svg></span><span class="cap">16&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="28" height="28"><use href="#g-drop"/></svg></span><span class="cap">28&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-light"><svg class="ico" width="56" height="56"><use href="#g-drop"/></svg></span><span class="cap">56&nbsp;px</span></div>
+      <div class="swatch"><span class="chip on-dark"><svg class="ico" width="28" height="28"><use href="#g-drop"/></svg></span><span class="cap">on dark</span></div>
+    </div>
+    <div class="lockup"><span class="chip on-light" style="padding:5px"><svg class="ico" width="26" height="26"><use href="#g-drop"/></svg></span><span class="word">Nimble<small>Lab Manager</small></span></div>
+  </div>
+
+</div>
+
+<p class="note">All six scale losslessly and recolor in one line. My picks: <b>#1 Monogram</b>
+  for the safest, most legible favicon, or <b>#2 Flask</b> for the most character. Tell me which
+  to refine (weight, proportions, an accent color) and I'll finalize it and drop it into the
+  sidebar brand + favicon.</p>
+
+</body>
+</html>

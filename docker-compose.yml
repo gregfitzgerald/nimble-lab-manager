@@ -1,0 +1,17 @@
+# One-command local deployment:  docker compose up --build
+# The named volume keeps lab.db across container rebuilds (the app writes it
+# through the /app/lab.db -> /data/lab.db symlink baked into the image).
+services:
+  nlm:
+    build: .
+    ports:
+      - "8770:8770"
+    volumes:
+      - nlm-data:/data
+    environment:
+      # Set NLM_AUTH=off to run the app wide open (every request is admin).
+      NLM_AUTH: ${NLM_AUTH:-on}
+    restart: unless-stopped
+
+volumes:
+  nlm-data:

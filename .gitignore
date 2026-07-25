@@ -1,0 +1,36 @@
+# Local database (rebuilt from schema.sql + seed.sql, or generate_data.py)
+lab.db
+*.db
+*.sqlite3
+
+# Uploaded floor-plan images (created at runtime; not source)
+web/uploads/
+
+# Virtual environments
+.venv/
+venv/
+
+# Python cruft
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.hypothesis/
+.ruff_cache/
+.mypy_cache/
+
+# Generated API-doc output (not source; the real docs live in docs/)
+doc/
+
+# Generated analysis figures
+monthly_spend.png
+
+# Planning / working docs not meant for the public repo
+MVP_TRACKER.md
+tasks/
+.sessions/
+
+# OS / editor
+.DS_Store
+*.swp
+Thumbs.db

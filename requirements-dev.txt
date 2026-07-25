@@ -1,0 +1,14 @@
+# Test-only dependencies. Runtime deps live in requirements.txt.
+# httpx is required by fastapi.testclient.TestClient (starlette's test client).
+pytest>=8.0
+httpx>=0.27,<1.0
+# Playwright drives the browser-based e2e smoke suite (tests/e2e/). The suite
+# skips gracefully when playwright or its chromium browser is not installed.
+playwright>=1.40
+# Schemathesis drives OpenAPI-schema-based property/fuzz testing of the API
+# (tests/test_fuzz.py). It generates request variants from /openapi.json and
+# asserts the app never returns a 5xx. Skips gracefully when not installed.
+schemathesis>=4.0
+# axe-playwright-python bundles axe-core for the accessibility audit
+# (tests/e2e/test_a11y.py). Skips gracefully when not installed.
+axe-playwright-python>=0.1.3

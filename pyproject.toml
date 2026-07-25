@@ -1,0 +1,16 @@
+[tool.ruff]
+line-length = 100
+exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+# E501 (line-too-long) is intentionally not enforced: the existing codebase
+# has many long data literals (generate_data.py seed rows) and descriptive
+# strings that are clearer left un-wrapped. line-length above still guides
+# import formatting.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Browser e2e helpers use a deferred import layout that isort would reorder;
+# these files are out of scope for formatting changes.
+"tests/e2e/*" = ["I001"]

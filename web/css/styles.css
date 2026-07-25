@@ -1,0 +1,1020 @@
+/* Nimble Lab Manager -- design system.
+   WEB 1.0 SPARTAN edition: white background, Arial, 1px borders, zero radius,
+   zero shadows. Color is reserved for problems (red/amber/green alerts).
+   Tokens live on :root (light) and [data-theme="dark"]. Every module references
+   these via var() so the parallel-built views read as one product.
+   KEEP all class and token names; only visual definitions change. */
+
+:root {
+  --bg: #ffffff;
+  --bg-elev: #ffffff;
+  --border: #999999;
+  --text: #111111;
+  --text-muted: #555555;
+  --accent: #0000ee;       /* classic link blue; also map edit-mode chrome */
+  --accent-soft: #e8e8e8;  /* neutral gray hover/fill (no colored chrome) */
+
+  --ok: #007000;           /* good (darkened for >=4.5:1 badge-text contrast) */
+  --warn: #a85c00;         /* expiring / low stock (darkened to meet WCAG AA contrast) */
+  --danger: #cc0000;       /* expired / stockout / misplaced */
+  --empty: #ffffff;        /* empty well: white with thin border */
+  --occupied: #c8c8c8;     /* occupied well: neutral gray */
+
+  --radius: 0;
+  --shadow: none;
+  --font: Arial, Helvetica, sans-serif;
+  --mono: "Courier New", Courier, monospace;
+
+  /* spartan support tokens (additive; safe for existing var() users) */
+  --visited: #551a8b;
+  --fill: #eeeeee;         /* control fill */
+  --fill-strong: #dddddd;  /* pressed / primary fill */
+  --table-border: #cccccc;
+  --head-fill: #eeeeee;    /* table header row */
+  --rule: #333333;         /* heavier structural rule (cards, topbar) */
+}
+
+[data-theme="dark"] {
+  --bg: #111111;
+  --bg-elev: #111111;
+  --border: #777777;
+  --text: #eeeeee;
+  --text-muted: #aaaaaa;
+  --accent: #99ccff;
+  --accent-soft: #2a2a2a;
+
+  --ok: #33cc33;
+  --warn: #ffaa00;
+  --danger: #ff5555;
+  --empty: #111111;
+  --occupied: #555555;
+
+  --shadow: none;
+
+  --visited: #cc99ff;
+  --fill: #222222;
+  --fill-strong: #333333;
+  --table-border: #444444;
+  --head-fill: #222222;
+  --rule: #bbbbbb;
+}
+
+/* Native form controls in dark mode. Bare <input>/<select>/<textarea>
+   (top search box, filter selects, date/datetime-local/number/search fields,
+   the purchasing/people/stocktake forms) inherit the browser's light default and
+   render white-on-dark. color-scheme flips native chrome (dropdown arrows, date
+   pickers, spinners, scrollbars) to dark; the explicit tokens pin bg/text/border
+   to the spartan dark surface. Light theme is untouched. */
+[data-theme="dark"] { color-scheme: dark; }
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+  background: var(--bg-elev);
+  color: var(--text);
+  border-color: var(--border);
+}
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder { color: var(--text-muted); }
+[data-theme="dark"] option { background: var(--bg-elev); color: var(--text); }
+
+/* Spartan hard rules: nothing rounded, nothing floating. The !important also
+   flattens the hardcoded radii/shadows in map.js's injected scoped styles. */
+* {
+  box-sizing: border-box;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+body { overflow-x: hidden; }
+
+a { color: var(--accent); text-decoration: underline; }
+a:visited { color: var(--visited); }
+
+/* ---------------------------------------------------------------- app shell */
+/* Left sidebar (brand + vertical nav) beside a main area (top bar + content). */
+.app-shell { display: flex; min-height: 100vh; align-items: stretch; }
+
+.sidebar {
+  flex: 0 0 190px;
+  width: 190px;
+  background: var(--bg-elev);
+  border-right: 2px solid var(--rule);
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 10px 12px;
+  border-bottom: 2px solid var(--rule);
+}
+.brand-mark { display: inline-flex; flex: 0 0 auto; color: var(--text); align-self: flex-start; margin-top: 1px; }
+.brand-mark svg { display: block; }
+/* Wrap the (admin-configurable) lab name to as many lines as it needs -- never
+   clip it to an ellipsis. */
+.brand-name { flex: 1 1 auto; min-width: 0; white-space: normal; line-height: 1.15; overflow-wrap: break-word; }
+
+/* Sidebar-edge collapse chevron -- the clear "collapse this panel" affordance. */
+.sidebar-collapse {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  width: 22px; height: 22px;
+  line-height: 1;
+  font-size: 15px;
+  padding: 0;
+}
+.sidebar-collapse:hover { background: var(--accent-soft); }
+
+/* Collapsed: hide the sidebar, main area takes the full width. */
+.app-shell.nav-collapsed .sidebar { display: none; }
+
+/* Thin edge handle that reappears when the sidebar is collapsed, so the panel
+   can always be brought back without a mystery-meat menu button. */
+.rail-toggle {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  z-index: 45;
+  appearance: none;
+  border: 1px solid var(--border);
+  border-left: none;
+  background: var(--bg-elev);
+  color: var(--text);
+  cursor: pointer;
+  width: 16px;
+  height: 46px;
+  font-size: 14px;
+  padding: 0;
+}
+.rail-toggle:hover { background: var(--accent-soft); }
+.app-shell.nav-collapsed .rail-toggle { display: block; }
+
+.main-area { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+
+.crumb {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------------------------------------------------------------- top bar */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 12px;
+  height: 42px;
+  background: var(--bg-elev);
+  border-bottom: 2px solid var(--rule);
+}
+
+/* Hamburger toggle (three bars; no emoji). Desktop hides it (the sidebar-edge
+   chevron owns collapse); the mobile media query re-shows it for off-canvas. */
+.nav-toggle {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: none;
+  cursor: pointer;
+  width: 30px; height: 24px;
+  padding: 5px 6px;
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 0 0 auto;
+}
+.nav-toggle .hb { display: block; height: 2px; background: var(--text); width: 100%; }
+.nav-toggle:hover { background: var(--accent-soft); }
+
+/* Vertical nav in the sidebar -- plain text (matches the app), gray row rules. */
+.nav { display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 0; }
+.nav-item {
+  appearance: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 400;
+  text-decoration: none;
+  text-align: left;
+  padding: 7px 14px;
+  cursor: pointer;
+}
+.nav-item:hover { background: var(--accent-soft); }
+.nav-item.active {
+  background: var(--accent-soft);
+  font-weight: 700;
+  border-left: 3px solid var(--text);
+  padding-left: 11px;
+}
+
+.topbar-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+/* Uniform height + alignment for every top-bar control so the search box, the
+   Alerts button, the primary action, and the account button line up cleanly. */
+.topbar-actions > .btn,
+.topbar-actions .btn-sm,
+.topbar-actions .user-btn,
+.topbar-actions #search-input {
+  height: 27px;
+  box-sizing: border-box;
+  line-height: 1;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+}
+/* Don't let the height rule above resurrect elements that are toggled off via
+   the `hidden` attribute (e.g. the empty primary-action button on views that
+   set no action) -- that would be an unnamed, visible button. */
+.topbar-actions [hidden] { display: none !important; }
+.topbar-actions #notif-btn { gap: 4px; }
+
+/* Keyboard-shortcut affordance inside the search box (GitHub/Linear pattern). */
+#search-input { padding-right: 22px; }
+.search-kbd {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 5px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: var(--bg);
+  pointer-events: none;
+}
+#search-input:focus ~ .search-kbd { display: none; }  /* the hint is redundant once focused */
+
+/* Thin divider that groups search + alerts apart from the account menu. */
+.topbar-divider { width: 1px; height: 20px; background: var(--border); flex: 0 0 auto; }
+
+/* Clickable breadcrumb segments. */
+.crumb { display: flex; align-items: center; gap: 6px; }
+.crumb-seg {
+  appearance: none; border: none; background: none; padding: 0;
+  font: inherit; font-weight: 700; font-size: 13px; color: var(--text); cursor: pointer;
+}
+.crumb-seg:hover { text-decoration: underline; }
+.crumb-current { cursor: default; }
+.crumb-current:hover { text-decoration: none; }
+.crumb-sep { color: var(--text-muted); font-size: 13px; }
+
+/* Notifications bell icon sits with the count badge. */
+#notif-btn .bell-ico { display: block; }
+
+/* "+ New" quick-create dropdown (mirrors the account menu). */
+.quicknew-wrap { position: relative; }
+.quicknew-menu {
+  position: absolute; top: 100%; right: 0; margin-top: 4px;
+  min-width: 190px; background: var(--bg-elev); border: 1px solid var(--border); z-index: 60;
+}
+.quicknew-item {
+  appearance: none; display: block; width: 100%; text-align: left;
+  border: none; border-bottom: 1px solid var(--border); background: none;
+  color: var(--text); cursor: pointer; font: inherit; font-size: 13px; padding: 8px 12px;
+}
+.quicknew-item:last-child { border-bottom: none; }
+.quicknew-item:hover { background: var(--accent-soft); }
+.quicknew-item.muted { cursor: default; }
+.quicknew-item.muted:hover { background: none; }
+
+/* Off-canvas sidebar on narrow screens: fixed overlay with a backdrop. */
+.nav-backdrop { display: none; }
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0; left: 0;
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform 0.18s ease;
+    box-shadow: none;
+  }
+  .app-shell:not(.nav-collapsed) .sidebar { transform: none; }
+  .app-shell.nav-collapsed .sidebar { display: flex; }  /* stays in DOM, just off-canvas */
+  .app-shell:not(.nav-collapsed) .nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(0, 0, 0, 0.35);
+  }
+  /* On a phone the hamburger opens the off-canvas panel; the desktop-only
+     collapse chevron and edge handle are not used. */
+  .nav-toggle { display: inline-flex; }
+  .sidebar-collapse { display: none; }
+  .app-shell.nav-collapsed .rail-toggle { display: none; }
+}
+
+/* ---------------------------------------------------------------- layout */
+.content {
+  flex: 1 1 auto;          /* fill the main area's height */
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 14px 12px 40px;
+}
+/* Full-bleed views (the Map) take the entire right panel, edge to edge and
+   full height, and manage their own internal layout/scrolling. */
+.content.full-bleed {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ---------------------------------------------------- hub tab strip (level 2) */
+.hub-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  border-bottom: 2px solid var(--rule);
+  margin: 0 0 14px;
+  flex: 0 0 auto;
+}
+.hub-tab {
+  appearance: none;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 14px;
+  margin-bottom: -2px;
+}
+.hub-tab:hover { background: var(--accent-soft); }
+.hub-tab.active {
+  color: var(--text);
+  font-weight: 700;
+  border-color: var(--border);
+  border-bottom: 2px solid var(--bg);
+  background: var(--bg);
+}
+/* When the active tab is full-bleed (the Map), the strip keeps its height and
+   the body fills the rest of the panel. */
+.content.full-bleed .hub-tabs { margin: 0; padding: 0 8px; }
+.content.full-bleed .hub-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+
+/* ------------------------------------------------------- account menu (top bar) */
+.user-wrap { position: relative; }
+.user-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 7px;
+  font: inherit;
+  font-size: 13px;
+  max-width: 190px;
+}
+.user-btn:hover { background: var(--accent-soft); }
+.user-avatar {
+  flex: 0 0 auto;
+  width: 20px; height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fill);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 700;
+}
+.user-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-caret { flex: 0 0 auto; font-size: 10px; color: var(--text-muted); }
+.user-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  width: 220px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  z-index: 60;
+}
+.user-menu-head {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.user-menu-item {
+  appearance: none;
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 12px;
+}
+.user-menu-item:last-child { border-bottom: none; }
+.user-menu-item:hover { background: var(--accent-soft); }
+
+/* --------------------------------------------------- modal dialog (ctx.modal) */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px;
+  overflow-y: auto;
+}
+.modal-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--text);
+  width: 100%;
+  max-width: 560px;
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 2px solid var(--rule);
+}
+.modal-title { font-weight: 700; font-size: 15px; }
+.modal-close {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  width: 26px; height: 26px;
+  font-size: 16px;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+.modal-close:hover { background: var(--accent-soft); }
+.modal-body { padding: 14px; }
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* --------------------------------------------- context menu (ctx.contextMenu) */
+.ctxmenu {
+  position: fixed;
+  z-index: 90;
+  background: var(--bg-elev);
+  border: 1px solid var(--text);
+  min-width: 180px;
+}
+.ctxmenu-head {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+.ctxmenu-item {
+  appearance: none;
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 12px;
+}
+.ctxmenu-item:last-child { border-bottom: none; }
+.ctxmenu-item:hover { background: var(--accent-soft); }
+.ctxmenu-item:disabled { color: var(--text-muted); cursor: default; background: none; }
+.ctxmenu-danger { color: var(--danger); }
+.ctxmenu-divider { height: 0; border-top: 1px solid var(--border); }
+.view-title {
+  margin: 0 0 2px;
+  font-size: 18px;
+  font-weight: 700;
+}
+.view-sub { color: var(--text-muted); margin: 0 0 12px; }
+
+.grid { display: grid; gap: 10px; }
+.grid-cards { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+
+/* ---------------------------------------------------------------- cards */
+.card {
+  background: var(--bg-elev);
+  border: 1px solid var(--rule);
+  padding: 10px;
+}
+/* A bordered inset panel (forms, notes) -- distinct from the map's .well cell. */
+.panel {
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  padding: 10px;
+}
+.card-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+  margin-bottom: 8px;
+}
+.card-link { cursor: pointer; }
+.card-link:hover { background: var(--accent-soft); }
+
+/* stat: big number + label */
+.stat { display: flex; flex-direction: column; gap: 1px; }
+.stat-value { font-size: 24px; font-weight: 700; line-height: 1.1; }
+.stat-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+/* ---------------------------------------------------------------- buttons */
+.btn {
+  appearance: none;
+  font: inherit;
+  font-weight: 400;
+  border: 1px solid var(--rule);
+  background: var(--fill);
+  color: var(--text);
+  padding: 3px 10px;
+  cursor: pointer;
+  line-height: 1.3;
+  white-space: nowrap;   /* never wrap to a second line (would overflow the ribbon) */
+}
+.btn:hover { background: var(--fill-strong); }
+.btn:active { background: var(--fill-strong); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn-primary {
+  background: var(--fill-strong);
+  border-color: var(--text);
+  color: var(--text);
+  font-weight: 700;
+}
+[data-theme="dark"] .btn-primary { color: var(--text); }
+.btn-primary:hover { background: var(--fill); }
+.btn-ghost {
+  background: none;
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+.btn-ghost:hover { color: var(--text); background: var(--accent-soft); border-color: var(--border); }
+.btn-sm { padding: 1px 7px; font-size: 12px; }
+
+/* ---------------------------------------------------------------- badges / chips */
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text);
+  white-space: nowrap;
+}
+.badge-ok { background: var(--bg-elev); border-color: var(--ok); color: var(--ok); }
+.badge-warn { background: var(--bg-elev); border-color: var(--warn); color: var(--warn); }
+.badge-danger { background: var(--bg-elev); border-color: var(--danger); color: var(--danger); }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text);
+}
+select.chip { cursor: pointer; }
+
+/* ---------------------------------------------------------------- tables */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  border: 1px solid var(--table-border);
+}
+.table th {
+  text-align: left;
+  font-weight: 700;
+  color: var(--text);
+  font-size: 12px;
+  background: var(--head-fill);
+  padding: 4px 8px;
+  border: 1px solid var(--table-border);
+  white-space: nowrap;
+}
+.table td {
+  padding: 3px 8px;
+  border: 1px solid var(--table-border);
+  vertical-align: middle;
+}
+.table tbody tr:last-child td { border-bottom: 1px solid var(--table-border); }
+.table tbody tr.row-link { cursor: pointer; }
+.table tbody tr.row-link:hover { background: var(--accent-soft); }
+.table-scroll { overflow-x: auto; width: 100%; }
+
+/* ---------------------------------------------------------------- wells (map + grids) */
+.well {
+  width: 34px; height: 34px;
+  border: 1px solid var(--border);
+  background: var(--empty);
+}
+.well-empty { background: var(--empty); }
+.well-occupied { background: var(--occupied); }
+.well-expiring { background: var(--warn); }
+.well-expired { background: var(--danger); }
+.well-misplaced { outline: 2px solid var(--danger); outline-offset: -1px; }
+
+/* map.js injects the same well classes plus legend swatches with its own
+   scoped stylesheet; give the swatches/wells visible edges here. */
+.map-legend i { border: 1px solid var(--border); }
+.well.clickable:hover { transform: none !important; border-color: var(--text); }
+
+/* ---------------------------------------------------------------- toasts */
+.toast-host {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(360px, 90vw);
+}
+.toast {
+  background: var(--bg-elev);
+  border: 1px solid var(--text);
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 13px;
+}
+.toast-ok { border-color: var(--ok); color: var(--ok); }
+.toast-warn { border-color: var(--warn); color: var(--warn); }
+.toast-danger { border-color: var(--danger); color: var(--danger); }
+@keyframes toast-in { from { opacity: 1; } to { opacity: 1; } }
+
+/* ---------------------------------------------------------------- auth */
+.user-chip {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.login-wrap {
+  min-height: calc(100vh - 200px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.login-card { width: min(400px, 100%); padding: 16px; }
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+.login-field { display: flex; flex-direction: column; gap: 3px; margin: 0 0 10px; }
+.login-field label {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.login-field input {
+  font: inherit;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+.login-field input:focus {
+  outline: 2px solid var(--text);
+  border-color: var(--text);
+}
+.login-error { color: var(--danger); font-weight: 700; font-size: 12px; min-height: 18px; margin-bottom: 5px; }
+.login-submit { width: 100%; padding: 5px 10px; }
+.login-demos { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
+.login-demos-title {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.demo-list { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.demo-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 4px 8px;
+}
+.demo-cred { font-size: 11px; color: var(--text-muted); font-family: var(--mono); }
+
+/* ---------------------------------------------------------------- misc */
+.muted { color: var(--text-muted); }
+.mono { font-family: var(--mono); }
+.right { text-align: right; }
+.spacer { flex: 1 1 auto; }
+.empty-state { padding: 24px; text-align: center; color: var(--text-muted); }
+.row-actions { display: flex; gap: 5px; justify-content: flex-end; }
+.section-gap { margin-top: 18px; }
+
+/* status dots: small solid squares, color = alert semantics */
+.dot { width: 8px; height: 8px; display: inline-block; border: 1px solid var(--rule); }
+.dot-ok { background: var(--ok); border-color: var(--ok); }
+.dot-warn { background: var(--warn); border-color: var(--warn); }
+.dot-danger { background: var(--danger); border-color: var(--danger); }
+
+@media (max-width: 720px) {
+  /* Lab Tycoon sets its column split inline; collapse to one column on narrow
+     screens so the supply table and researcher panel each get full width. */
+  .lt-cols { grid-template-columns: 1fr !important; }
+}
+
+@media (max-width: 640px) {
+  .nav { overflow-x: auto; }
+  .brand span.brand-name { display: none; }
+}
+
+/* Nav is a wrapping bar on its own row; items keep their words intact. */
+.nav-item { flex: 0 0 auto; white-space: nowrap; }
+
+/* Global search box + dropdown (top bar). Flat, bordered, theme-aware. */
+.search-wrap { position: relative; }
+#search-input { width: 180px; padding: 0 8px; }
+#search-input:focus { width: 250px; }
+.search-results {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  min-width: 260px;
+  max-width: 340px;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  z-index: 60;
+}
+.search-group {
+  padding: 4px 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--border);
+}
+.search-item {
+  padding: 6px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.search-item:last-child { border-bottom: none; }
+.search-item:hover,
+.search-item.active { background: var(--accent-soft); }
+/* The top-bar search field is a launcher for the command palette. */
+#search-input[readonly] { cursor: pointer; background: var(--bg-elev); }
+
+/* ------------------------------------------------- command palette (Ctrl-K) */
+.cmdk-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 12vh 16px 16px;
+}
+.cmdk-box {
+  width: 100%;
+  max-width: 560px;
+  background: var(--bg-elev);
+  border: 1px solid var(--text);
+  display: flex;
+  flex-direction: column;
+  max-height: 66vh;
+}
+.cmdk-input {
+  appearance: none;
+  border: none;
+  border-bottom: 2px solid var(--rule);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  padding: 13px 16px;
+  outline: none;
+}
+.cmdk-results { overflow-y: auto; }
+.cmdk-group {
+  padding: 8px 16px 3px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.cmdk-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+.cmdk-item.active { background: var(--accent-soft); border-left-color: var(--text); }
+.cmdk-item-main { font-size: 14px; color: var(--text); }
+.cmdk-item-sub { font-size: 12px; color: var(--text-muted); }
+.cmdk-empty { padding: 16px; color: var(--text-muted); font-size: 13px; }
+.cmdk-foot {
+  border-top: 1px solid var(--border);
+  padding: 7px 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Notifications "Alerts" bell + dropdown panel (top bar). */
+.notif-wrap { position: relative; }
+.notif-count {
+  display: inline-block;
+  margin-left: 5px;
+  min-width: 16px;
+  padding: 0 4px;
+  text-align: center;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 700;
+}
+.notif-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  width: 320px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  z-index: 60;
+}
+.notif-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--border);
+}
+.notif-item {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  cursor: pointer;
+}
+.notif-item:last-child { border-bottom: none; }
+.notif-item:hover { background: var(--accent-soft); }
+.notif-read { opacity: 0.55; }
+
+/* ================================================================
+   RESPONSIVE / MOBILE + A11Y  (additive, token-based).
+   Desktop (>768px) is intentionally untouched: every rule below is
+   scoped to a media query, :focus-visible, reduced-motion, or a
+   coarse pointer. No existing declaration is altered.
+   ================================================================ */
+
+/* --- Accessibility: keyboard focus ring. The global reset (*{}) never
+   sets outline:none, so this is not suppressed. var(--accent) is the
+   classic link blue in light and a bright sky blue in dark, so the ring
+   is visible on both surfaces; the offset clears the 1px control borders. */
+a:focus-visible,
+button:focus-visible,
+.nav-item:focus-visible,
+.btn:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Respect reduced-motion: cancel the toast opacity fade (set inline in
+   app.js as `transition: opacity .2s`; !important beats the inline style). */
+@media (prefers-reduced-motion: reduce) {
+  .toast { transition: none !important; }
+}
+
+/* Touch: enlarge the primary tap targets on coarse pointers. */
+@media (pointer: coarse) {
+  .nav-item,
+  .btn {
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* --- Tablet & phone (<=768px): tighter gutters, scrollable wide content,
+   full-width form controls. */
+@media (max-width: 768px) {
+  .content { padding: 10px 8px 32px; }
+
+  /* Wide tables (and any over-wide card content) scroll inside their card
+     instead of pushing the page sideways. .table-scroll already does this
+     where used; this catches tables rendered straight into a card/panel. */
+  .card,
+  .panel { overflow-x: auto; }
+  .table-scroll { overflow-x: auto; }
+
+  /* Every form field in the app carries .chip; let them stack full width
+     and shrink so inline flex toolbars collapse to one control per row. */
+  input.chip,
+  select.chip,
+  textarea.chip {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* --- Phone (<=560px): dashboard stat cards keep a readable width at two
+   columns rather than a single tall stack. */
+@media (max-width: 560px) {
+  .grid-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* --- Narrow phone (<=480px): reclaim space in the 42px top bar. Drop the
+   global search, the identity chip, and the demo-reset button so Alerts,
+   Theme, and Logout stay on the bar without overflowing it. */
+@media (max-width: 480px) {
+  #search-wrap,
+  #user-chip,
+  #reset-btn { display: none !important; }
+  .topbar { gap: 8px; }
+}

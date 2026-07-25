@@ -1,0 +1,30 @@
+# virtualenvs and local databases never belong in the image
+.venv
+venv
+lab.db
+*.db
+*.sqlite3
+
+# python cruft
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+
+# vcs / ci
+.git
+.github
+
+# tests (run in CI, not shipped)
+tests
+pytest.ini
+requirements-dev.txt
+
+# node / editor / temp
+node_modules
+package.json
+package-lock.json
+tmp
+*.tmp
+.sessions
+tasks

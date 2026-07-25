@@ -1,0 +1,37 @@
+# Fly.io configuration for Nimble Lab Manager.
+# Edit `app` to a globally unique name (or let `flyctl launch` pick one),
+# and create the volume before first deploy:
+#   flyctl volumes create nlm_data --size 1
+# The image symlinks /app/lab.db into /data, so the SQLite DB lives on the
+# volume and survives deploys.
+
+app = "nimble-lab-manager"   # CHANGE ME: must be globally unique on Fly
+primary_region = "ewr"       # pick a region near you
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NLM_AUTH = "on"
+
+[[mounts]]
+  source = "nlm_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8770
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Ruff lint
+        run: |
+          pip install ruff
+          ruff check .
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run test suite
+        # Unit + role/security tests, Schemathesis OpenAPI fuzzing, and the
+        # concurrency stress test. Browser-driven a11y/e2e modules skip here (no
+        # chromium) and run in the dedicated e2e job below.
+        run: pytest -q
+
+      - name: Dependency security audit (pip-audit)
+        # Advisory: flags known CVEs in dependencies. Non-blocking so a freshly
+        # published advisory never breaks the build; review the output.
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt || true
+
+      - name: Data generator smoke check
+        run: |
+          python generate_data.py --preset small --seed 1 \
+            --db "${RUNNER_TEMP}/smoke.db" --force
+          python - <<'EOF'
+          import os, sqlite3
+          conn = sqlite3.connect(os.path.join(os.environ["RUNNER_TEMP"], "smoke.db"))
+          items = conn.execute("SELECT COUNT(*) FROM inventory").fetchone()[0]
+          users = conn.execute("SELECT COUNT(*) FROM app_user").fetchone()[0]
+          assert items > 0 and users == 4, (items, users)
+          print(f"smoke ok: {items} items, {users} app users")
+          EOF
+
+      - name: JS syntax check (allow-fail)
+        continue-on-error: true
+        run: |
+          if command -v node >/dev/null 2>&1; then
+            for f in web/js/*.js; do
+              echo "node --check $f"
+              node --check "$f"
+            done
+          else
+            echo "node not available; skipping"
+          fi
+
+  e2e:
+    runs-on: ubuntu-latest
+    # Browser-driven smoke suite. Non-blocking so a flaky browser launch never
+    # fails the pipeline; the unit-test job above is the gate.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Install Playwright chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run e2e smoke suite
+        run: pytest tests/e2e -q

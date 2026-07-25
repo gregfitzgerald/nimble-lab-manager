@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nimble Lab Manager</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-head">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 64 64" width="21" height="21" fill="none">
+        <path d="M32 6 L54 18.5 V45.5 L32 58 L10 45.5 V18.5 Z" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/>
+        <path d="M24 43 V23 L40 43 V23" stroke="currentColor" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg></span>
+      <span class="brand-name" id="lab-name">Nimble Lab Manager</span>
+      <button class="sidebar-collapse" id="sidebar-collapse" title="Collapse navigation" aria-label="Collapse navigation">‹</button>
+    </div>
+    <nav class="nav" id="nav" aria-label="Primary"></nav>
+  </aside>
+
+  <div class="nav-backdrop" id="nav-backdrop" hidden></div>
+  <button class="rail-toggle" id="rail-toggle" title="Show navigation" aria-label="Show navigation">›</button>
+
+  <div class="main-area">
+    <header class="topbar">
+      <button class="nav-toggle" id="sidebar-toggle" title="Show / hide navigation" aria-label="Toggle navigation" aria-expanded="true">
+        <span class="hb"></span><span class="hb"></span><span class="hb"></span>
+      </button>
+      <nav class="crumb" id="crumb" aria-label="Current section"></nav>
+      <div class="topbar-actions">
+        <div class="search-wrap" id="search-wrap" hidden>
+          <input class="chip" id="search-input" type="search" placeholder="Search…" title="Search -- press / or Ctrl-K" aria-label="Search inventory, locations, equipment, orders, and people" autocomplete="off">
+          <kbd class="search-kbd" aria-hidden="true">/</kbd>
+          <div class="search-results" id="search-results" role="listbox" aria-label="Search results" hidden></div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="primary-action" hidden></button>
+        <div class="quicknew-wrap" id="quicknew-wrap" hidden>
+          <button class="btn btn-primary btn-sm" id="quicknew-btn" title="Create something new" aria-haspopup="true" aria-expanded="false">+ New</button>
+          <div class="quicknew-menu" id="quicknew-menu" role="menu" aria-label="Create new" hidden></div>
+        </div>
+        <div class="notif-wrap" id="notif-wrap" hidden>
+          <button class="btn btn-ghost btn-sm" id="notif-btn" title="Alerts and notifications" aria-label="Alerts" aria-haspopup="true"><svg class="bell-ico" viewBox="0 0 24 24" width="15" height="15" fill="none" aria-hidden="true"><path d="M6 9.5a6 6 0 0 1 12 0c0 4.5 2 5.5 2 5.5H4s2-1 2-5.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="notif-count" id="notif-count" hidden>0</span></button>
+          <div class="notif-panel" id="notif-panel" role="region" aria-label="Alerts" hidden></div>
+        </div>
+        <span class="topbar-divider" id="topbar-divider" aria-hidden="true" hidden></span>
+        <div class="user-wrap" id="user-wrap" hidden>
+          <button class="user-btn" id="user-btn" title="Account" aria-haspopup="true" aria-expanded="false">
+            <span class="user-avatar" id="user-avatar" aria-hidden="true"></span>
+            <span class="user-name" id="user-name"></span>
+            <span class="user-caret" aria-hidden="true">▾</span>
+          </button>
+          <div class="user-menu" id="user-menu" role="menu" aria-label="Account menu" hidden>
+            <div class="user-menu-head" id="user-menu-head"></div>
+            <button class="user-menu-item" id="reset-btn" role="menuitem" title="Rebuild the demo database" hidden>Reset demo data</button>
+            <button class="user-menu-item" id="theme-toggle" role="menuitem" title="Toggle light / dark">Theme</button>
+            <button class="user-menu-item" id="logout-btn" role="menuitem" title="Sign out" hidden>Logout</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main id="view-root" class="content" role="main" tabindex="-1"></main>
+  </div>
+
+  <div class="toast-host" id="toast-host" aria-live="polite" aria-atomic="true"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
