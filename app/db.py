@@ -17,10 +17,18 @@ SEED_PATH = os.path.join(ROOT_DIR, "seed.sql")
 
 
 def get_conn():
-    """Return a sqlite3 connection with Row rows and foreign keys enforced."""
-    conn = sqlite3.connect(DB_PATH)
+    """Return a sqlite3 connection with Row rows and foreign keys enforced.
+
+    WAL mode lets readers and writers proceed concurrently instead of blocking,
+    and busy_timeout makes a briefly-locked write wait-and-retry rather than
+    immediately erroring -- together they keep real multi-user load from
+    surfacing as 'database is locked' 500s.
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=5.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 5000")
+    conn.execute("PRAGMA journal_mode = WAL")
     return conn
 
 
@@ -29,17 +37,23 @@ def _read(path):
         return fh.read()
 
 
-def init_db(force=False):
-    """Build lab.db from schema.sql + seed.sql when it is missing.
+def init_db(force=False, seed_demo=None):
+    """Build lab.db from schema.sql (+ optionally seed.sql) when it is missing.
 
-    force=True deletes any existing database and rebuilds it from scratch
-    (used by POST /api/reset).
+    force=True deletes any existing database and rebuilds it from scratch.
 
-    The demo login users (see app.auth.DEMO_USERS) are ensured on every call
-    -- passwords are PBKDF2-hashed in Python, so they cannot live in seed.sql.
-    The ensure step is idempotent, making repeated inits/resets safe.
+    seed_demo controls whether the synthetic demo lab and the four well-known
+    demo logins are loaded. When None it is read from the environment
+    (NLM_SEED_DEMO, default off) so a deployed instance starts empty and secure:
+    an admin account is bootstrapped instead (see app.auth.ensure_admin_bootstrap).
+    The local launcher and dev tooling pass/set seed_demo on to keep the demo.
+    Auth accounts are PBKDF2-hashed in Python, so they cannot live in seed.sql;
+    the ensure/bootstrap step is idempotent, making repeated inits/resets safe.
     """
     from . import auth  # local import: auth imports get_conn from this module
+
+    if seed_demo is None:
+        seed_demo = auth.demo_enabled()
 
     if force and os.path.exists(DB_PATH):
         os.remove(DB_PATH)
@@ -50,25 +64,32 @@ def init_db(force=False):
         conn.execute("PRAGMA foreign_keys = ON")
         if fresh:
             conn.executescript(_read(SCHEMA_PATH))
-            if os.path.exists(SEED_PATH):
+            if seed_demo and os.path.exists(SEED_PATH):
                 conn.executescript(_read(SEED_PATH))
-        auth.ensure_demo_users(conn)
+        if seed_demo:
+            auth.ensure_demo_users(conn)
+        else:
+            auth.ensure_admin_bootstrap(conn)
         conn.commit()
     finally:
         conn.close()
     return DB_PATH
 
 
-def rebuild_db():
-    """Reset the demo data by dropping every table and re-running schema + seed
+def rebuild_db(seed_demo=None):
+    """Reset the database by dropping every table and re-running schema (+ seed)
     IN PLACE, without deleting the database file.
 
     init_db(force=True) removes the file, which breaks persistence when lab.db
     lives on a bind-mounted / volume-backed path (the file's inode is what the
     mount tracks). This rebuild keeps the same file, so POST /api/reset survives
-    a containerized deployment. Called only by the reset endpoint.
+    a containerized deployment. Called only by the reset endpoint, which is
+    itself limited to demo instances. seed_demo defaults to the environment.
     """
     from . import auth  # local import: auth imports get_conn from this module
+
+    if seed_demo is None:
+        seed_demo = auth.demo_enabled()
 
     conn = sqlite3.connect(DB_PATH)
     try:
@@ -82,9 +103,12 @@ def rebuild_db():
         for (name,) in tables:
             conn.execute(f'DROP TABLE IF EXISTS "{name}"')
         conn.executescript(_read(SCHEMA_PATH))
-        if os.path.exists(SEED_PATH):
+        if seed_demo and os.path.exists(SEED_PATH):
             conn.executescript(_read(SEED_PATH))
-        auth.ensure_demo_users(conn)
+        if seed_demo:
+            auth.ensure_demo_users(conn)
+        else:
+            auth.ensure_admin_bootstrap(conn)
         conn.commit()
         conn.execute("PRAGMA foreign_keys = ON")
     finally:

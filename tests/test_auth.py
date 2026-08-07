@@ -59,7 +59,10 @@ def test_member_cannot_reset(member):
     assert member.post("/api/reset").status_code == 403
 
 
-def test_manager_can_reset_and_keeps_session(manager):
+def test_manager_can_reset_and_keeps_session(manager, monkeypatch):
+    # Reset is demo-only; seed the demo so the rebuild restores the manager
+    # account and the caller's session survives.
+    monkeypatch.setenv("NLM_SEED_DEMO", "1")
     resp = manager.post("/api/reset")
     assert resp.status_code == 200
     assert resp.json() == {"ok": True}
@@ -72,8 +75,9 @@ def test_viewer_cannot_use_location_crud(viewer):
     assert resp.status_code == 403
 
 
-def test_auth_off_opens_everything_as_admin(noauth_client):
+def test_auth_off_opens_everything_as_admin(noauth_client, monkeypatch):
     # No login at all, yet reads, mutations, and manager-only routes work.
+    monkeypatch.setenv("NLM_ALLOW_RESET", "1")  # reset is otherwise demo-gated
     me = noauth_client.get("/api/me")
     assert me.status_code == 200
     user = me.json()["user"]

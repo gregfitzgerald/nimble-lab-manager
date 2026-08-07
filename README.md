@@ -101,8 +101,8 @@ the server.
 
 ### Logging in
 
-The app ships with four demo accounts, one per role in the
-`viewer < member < manager < admin` hierarchy:
+`python3 run.py` starts in **demo mode** and ships four demo accounts, one per
+role in the `viewer < member < manager < admin` hierarchy:
 
 | Username  | Password  | Role    |
 |-----------|-----------|---------|
@@ -110,6 +110,11 @@ The app ships with four demo accounts, one per role in the
 | `manager` | `manager` | manager |
 | `member`  | `member`  | member  |
 | `viewer`  | `viewer`  | viewer  |
+
+The one-click buttons on the login screen fill these in. They exist **only in
+demo mode** -- see [Running a real lab (empty start)](#running-a-real-lab-empty-start)
+for how a deployed instance starts empty and secure instead, with no well-known
+credentials.
 
 Roles gate both the UI (nav items you can't reach are hidden -- People is
 admin-only) and the API (every mutating endpoint declares its minimum role
@@ -126,6 +131,23 @@ Every request is then treated as an admin session with no cookie required. The
 demo data is dated so "today" surfaces the interesting cases: expired and
 expiring lots, low-stock reorders, misplaced containers, pending purchase orders,
 equipment due for service, and months of consumption history for the analytics.
+
+### Running a real lab (empty start)
+
+Demo mode is opt-in (the `NLM_SEED_DEMO` flag, which `run.py` sets for you). Any
+other launch -- Docker, Fly, or a plain `uvicorn` (or `make run-empty`) --
+starts with an **empty database and no demo accounts**. On first boot the app
+creates a single admin:
+
+- Set `NLM_ADMIN_USER` / `NLM_ADMIN_PASSWORD` beforehand to choose the login, or
+- leave them unset and read the one-time generated password from the startup
+  logs, then change it in **Admin > People**.
+
+From there you build your own lab: add users, draw your rooms and freezers on the
+map, and bulk-import your existing stock (**Admin > Reports > Import**). Because
+there is no demo data to wipe, the destructive "Reset demo data" action is
+disabled outside demo mode. Cookies are marked `Secure` automatically over HTTPS
+(and `fly.toml` sets `NLM_SECURE_COOKIES=1`).
 
 ## Feature tour
 
@@ -293,11 +315,12 @@ repeated failures).
 ## Deploy
 
 A `Dockerfile` + `docker-compose.yml` (`docker compose up --build`, then
-<http://localhost:8770>) and a ready-to-edit `fly.toml` ship in the repo root. In
-both, the database builds from `schema.sql` + `seed.sql` on first boot; a mounted
-volume (`nlm-data` / `nlm_data`, at `/data`) keeps `lab.db` across rebuilds. Set
-`NLM_AUTH=off` in the environment to run without logins. A single SQLite file
-means a single machine -- the right shape for this workload.
+<http://localhost:8770>) and a ready-to-edit `fly.toml` ship in the repo root.
+Both start **empty and secure** -- the schema builds on first boot and a single
+admin is bootstrapped (see [Running a real lab](#running-a-real-lab-empty-start));
+set `NLM_SEED_DEMO=1` if you instead want the throwaway demo lab. A mounted
+volume (`nlm-data` / `nlm_data`, at `/data`) keeps `lab.db` across rebuilds. A
+single SQLite file means a single machine -- the right shape for this workload.
 
 ## Contributing and license
 

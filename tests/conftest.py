@@ -27,7 +27,10 @@ def template_db(tmp_path_factory):
     original = appdb.DB_PATH
     appdb.DB_PATH = str(path)
     try:
-        appdb.init_db(force=True)
+        # The suite asserts against the seeded demo lab and logs in as the four
+        # demo roles, so build the template with demo seeding on explicitly
+        # (independent of the ambient NLM_SEED_DEMO, which defaults off).
+        appdb.init_db(force=True, seed_demo=True)
     finally:
         appdb.DB_PATH = original
     return path

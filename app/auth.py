@@ -10,12 +10,15 @@ the default is on.
 
 import hashlib
 import hmac
+import logging
 import os
 import secrets
 
 from fastapi import Depends, HTTPException, Request
 
 from .db import get_conn
+
+log = logging.getLogger("nlm.auth")
 
 COOKIE_NAME = "nlm_session"
 CSRF_COOKIE_NAME = "nlm_csrf"
@@ -64,6 +67,20 @@ CREATE INDEX IF NOT EXISTS idx_session_user ON session(user_id);
 def auth_enabled():
     """Auth is on unless NLM_AUTH=off (read per-call so tests can flip it)."""
     return os.environ.get("NLM_AUTH", "on").strip().lower() != "off"
+
+
+def demo_enabled():
+    """Whether to seed demo data + the four well-known demo logins.
+
+    Reads NLM_SEED_DEMO per-call; default OFF so a *deployed* instance starts
+    empty and secure (no admin/admin backdoor). The local launcher (run.py) and
+    the Makefile dev targets set it on to preserve the frictionless portfolio
+    demo. When off, a fresh database gets a single bootstrapped admin instead
+    (see ensure_admin_bootstrap).
+    """
+    return os.environ.get("NLM_SEED_DEMO", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
 
 
 def secure_cookies():
@@ -124,11 +141,47 @@ def create_user(conn, username, password, role, full_name, staff_id=None):
     return cur.lastrowid
 
 
+def ensure_auth_tables(conn):
+    """Create the auth tables if missing (idempotent; safe to call always)."""
+    conn.executescript(_AUTH_TABLES)
+
+
 def ensure_demo_users(conn):
     """Make sure the auth tables and the four demo logins exist. Idempotent."""
-    conn.executescript(_AUTH_TABLES)
+    ensure_auth_tables(conn)
     for username, password, role, full_name, staff_id in DEMO_USERS:
         create_user(conn, username, password, role, full_name, staff_id=staff_id)
+
+
+def ensure_admin_bootstrap(conn):
+    """On a user-less database, create exactly one admin account.
+
+    The username comes from NLM_ADMIN_USER (default 'admin'); the password from
+    NLM_ADMIN_PASSWORD, or -- if that is unset -- a strong random password that
+    is logged once at WARNING so the operator can read it from the startup logs
+    and change it immediately. Idempotent: a no-op as soon as any user exists,
+    so it never clobbers a real deployment's accounts.
+    """
+    ensure_auth_tables(conn)
+    if conn.execute("SELECT COUNT(*) FROM app_user").fetchone()[0]:
+        return
+    username = (os.environ.get("NLM_ADMIN_USER", "").strip() or "admin")
+    password = os.environ.get("NLM_ADMIN_PASSWORD", "").strip()
+    generated = not password
+    if generated:
+        password = secrets.token_urlsafe(12)
+    create_user(conn, username, password, "admin", "Administrator")
+    if generated:
+        log.warning(
+            "First-run: created admin account %r with a GENERATED password: %s\n"
+            "  Log in and change it immediately (Admin > People). Set "
+            "NLM_ADMIN_PASSWORD before first start to choose your own.",
+            username, password,
+        )
+    else:
+        log.info(
+            "First-run: created admin account %r from NLM_ADMIN_PASSWORD.", username
+        )
 
 
 def login_user(conn, username, password):

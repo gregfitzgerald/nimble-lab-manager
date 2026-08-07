@@ -11,6 +11,15 @@ services:
     environment:
       # Set NLM_AUTH=off to run the app wide open (every request is admin).
       NLM_AUTH: ${NLM_AUTH:-on}
+      # Demo seeding is off by default: the app starts EMPTY and bootstraps one
+      # admin on first boot. Provide the password (else a random one is printed
+      # to the logs once): docker compose logs, then change it in Admin > People.
+      NLM_ADMIN_USER: ${NLM_ADMIN_USER:-admin}
+      NLM_ADMIN_PASSWORD: ${NLM_ADMIN_PASSWORD:-}
+      # Set to 1 to load the interactive demo lab instead (enables admin/admin).
+      NLM_SEED_DEMO: ${NLM_SEED_DEMO:-}
+      # Uncomment when serving over HTTPS (e.g. behind a TLS proxy):
+      # NLM_SECURE_COOKIES: "1"
     restart: unless-stopped
 
 volumes:

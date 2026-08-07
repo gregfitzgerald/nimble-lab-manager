@@ -209,7 +209,30 @@ _LOGIN_MAX_FAILURES = 8
 _LOGIN_WINDOW_SEC = 600
 
 
-def _issue_csrf_cookie(response: Response):
+_MIN_PASSWORD_LEN = 8
+
+
+def _require_password(password):
+    """Reject empty or too-short passwords; return the accepted value."""
+    password = password or ""
+    if len(password) < _MIN_PASSWORD_LEN:
+        raise HTTPException(
+            status_code=400,
+            detail=f"password must be at least {_MIN_PASSWORD_LEN} characters",
+        )
+    return password
+
+
+def _cookie_secure(request: Request = None):
+    """Set the Secure flag when configured OR when the request arrived over
+    HTTPS, so the deployed (force_https) instance never emits a non-Secure
+    session cookie even if NLM_SECURE_COOKIES was left unset."""
+    if auth.secure_cookies():
+        return True
+    return request is not None and request.url.scheme == "https"
+
+
+def _issue_csrf_cookie(response: Response, request: Request = None):
     """Set a fresh JS-readable double-submit CSRF cookie; return its value."""
     token = _secrets.token_urlsafe(32)
     response.set_cookie(
@@ -219,13 +242,13 @@ def _issue_csrf_cookie(response: Response):
         path="/",
         httponly=False,
         samesite="lax",
-        secure=auth.secure_cookies(),
+        secure=_cookie_secure(request),
     )
     return token
 
 
 @auth_router.post("/login")
-def login(body: LoginBody, response: Response):
+def login(body: LoginBody, request: Request, response: Response):
     import time
 
     key = body.username.strip().lower()
@@ -261,9 +284,9 @@ def login(body: LoginBody, response: Response):
         path="/",
         httponly=True,
         samesite="lax",
-        secure=auth.secure_cookies(),
+        secure=_cookie_secure(request),
     )
-    _issue_csrf_cookie(response)
+    _issue_csrf_cookie(response, request)
     return {"user": user}
 
 
@@ -284,8 +307,19 @@ def logout(request: Request, response: Response):
 def me(request: Request, response: Response, user: dict = Depends(auth.current_user)):
     # Ensure the SPA has a CSRF token even if it only ever calls /api/me.
     if not request.cookies.get(auth.CSRF_COOKIE_NAME):
-        _issue_csrf_cookie(response)
+        _issue_csrf_cookie(response, request)
     return {"user": user}
+
+
+@auth_router.get("/public-config")
+def public_config():
+    """Unauthenticated bootstrap the login screen can read before sign-in.
+
+    demo_mode is true only when the well-known demo logins are seeded, so the
+    login page advertises them exactly when they exist -- a deployed (empty)
+    instance shows a plain sign-in form with no admin/admin hint.
+    """
+    return {"demo_mode": auth.demo_enabled()}
 
 
 # --------------------------------------------------------------------------- #
@@ -1900,6 +1934,18 @@ def staff():
 # --------------------------------------------------------------------------- #
 @router.post("/reset")
 def reset(request: Request, user: dict = Depends(auth.require_role("manager"))):
+    # Reset wipes every table and reloads the demo data. That is only ever
+    # appropriate on a demo instance -- on a real lab it would destroy live
+    # data -- so it is refused unless demo seeding is on (or explicitly allowed
+    # via NLM_ALLOW_RESET). This makes the "Reset demo data" button safe.
+    allow_reset = os.environ.get("NLM_ALLOW_RESET", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+    if not (auth.demo_enabled() or allow_reset):
+        raise HTTPException(
+            status_code=403,
+            detail="reset is disabled on this instance (demo mode only)",
+        )
     rebuild_db()
     # The rebuild wiped the session table; restore the caller's session so
     # resetting the demo data does not log them out mid-session.
@@ -4402,8 +4448,7 @@ def create_user_endpoint(body: UserCreateBody,
         raise HTTPException(status_code=400, detail="username is required")
     if body.role not in _USER_ROLES:
         raise HTTPException(status_code=400, detail=f"unknown role: {body.role}")
-    if not (body.password or ""):
-        raise HTTPException(status_code=400, detail="password is required")
+    _require_password(body.password)
     conn = get_conn()
     try:
         if conn.execute(
@@ -4477,8 +4522,7 @@ class PasswordBody(BaseModel):
 @router.post("/users/{user_id}/password", dependencies=[Depends(auth.require_role("admin"))])
 def reset_user_password(user_id: int, body: PasswordBody,
                         user: dict = Depends(auth.require_role("admin"))):
-    if not (body.password or ""):
-        raise HTTPException(status_code=400, detail="password is required")
+    _require_password(body.password)
     conn = get_conn()
     try:
         target = conn.execute(

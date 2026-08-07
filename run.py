@@ -141,8 +141,13 @@ def main():
         "--port",
         str(PORT),
     ]
+    # This one-command launcher is the portfolio/demo entry point, so seed the
+    # demo lab and the demo logins unless the operator has chosen otherwise.
+    # (A deployed instance -- Docker/Fly -- leaves this unset and starts empty.)
+    env = os.environ.copy()
+    env.setdefault("NLM_SEED_DEMO", "1")
     try:
-        subprocess.run(cmd, cwd=REPO_ROOT)
+        subprocess.run(cmd, cwd=REPO_ROOT, env=env)
     except KeyboardInterrupt:
         print("\nShutting down. Goodbye.")
 

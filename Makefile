@@ -4,13 +4,16 @@
 
 PY ?= .venv/bin/python
 
-.PHONY: help run test test-fast fuzz e2e a11y concurrency lint format data demo reset
+.PHONY: help run run-empty test test-fast fuzz e2e a11y concurrency lint format data demo reset
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| sort | awk 'BEGIN{FS=":.*?## "}{printf "  %-14s %s\n", $$1, $$2}'
 
-run:  ## Launch the server (http://127.0.0.1:8770); set NLM_AUTH=off for the open demo
+run:  ## Launch the server (http://127.0.0.1:8770) with the demo lab + demo logins
+	NLM_SEED_DEMO=1 $(PY) -m uvicorn app.server:app --host 127.0.0.1 --port 8770
+
+run-empty:  ## Launch as a real deployment would: empty DB, bootstrapped admin, no demo
 	$(PY) -m uvicorn app.server:app --host 127.0.0.1 --port 8770
 
 test:  ## Full test suite (unit + security + fuzz + e2e/a11y + concurrency)

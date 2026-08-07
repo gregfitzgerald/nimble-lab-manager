@@ -1,6 +1,8 @@
 # Local database (rebuilt from schema.sql + seed.sql, or generate_data.py)
 lab.db
 *.db
+*.db-wal
+*.db-shm
 *.sqlite3
 
 # Uploaded floor-plan images (created at runtime; not source)

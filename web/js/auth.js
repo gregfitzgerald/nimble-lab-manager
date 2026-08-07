@@ -15,7 +15,7 @@ export function render(root, ctx) {
     <div class="card login-card">
       <div class="login-brand"><span class="brand-mark"></span><span>Nimble Lab Manager</span></div>
       <h1 class="view-title">Sign in</h1>
-      <p class="view-sub">Pick a demo account below or enter your own credentials.</p>
+      <p class="view-sub" id="login-sub">Enter your credentials.</p>
       <form id="login-form" novalidate>
         <div class="login-field">
           <label for="login-username">Username</label>
@@ -28,7 +28,7 @@ export function render(root, ctx) {
         <div class="login-error" id="login-error"></div>
         <button class="btn btn-primary login-submit" type="submit">Sign in</button>
       </form>
-      <div class="login-demos">
+      <div class="login-demos" id="login-demos" hidden>
         <div class="login-demos-title">Demo accounts</div>
         <div class="demo-list" id="demo-list"></div>
       </div>
@@ -41,26 +41,41 @@ export function render(root, ctx) {
   const errBox = wrap.querySelector("#login-error");
   const submitBtn = wrap.querySelector(".login-submit");
 
-  // One-click fill buttons for the seeded demo logins.
-  const demoList = wrap.querySelector("#demo-list");
-  for (const acct of DEMO_ACCOUNTS) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "btn demo-btn";
-    const name = document.createElement("span");
-    name.textContent = acct.label;
-    const cred = document.createElement("span");
-    cred.className = "demo-cred mono";
-    cred.textContent = `${acct.username} / ${acct.password}`;
-    b.append(name, cred);
-    b.addEventListener("click", () => {
-      userInput.value = acct.username;
-      passInput.value = acct.password;
-      errBox.textContent = "";
-      submitBtn.focus();
-    });
-    demoList.appendChild(b);
-  }
+  // The one-click demo-login helpers are shown only on a demo instance -- a
+  // deployed (empty) deployment has no such accounts, so we never advertise
+  // them there. Ask the server, defaulting to hidden if the check fails.
+  (async () => {
+    let demoMode = false;
+    try {
+      demoMode = !!(await ctx.api.get("/api/public-config")).demo_mode;
+    } catch (_) {
+      demoMode = false;
+    }
+    if (!demoMode) return;
+    wrap.querySelector("#login-sub").textContent =
+      "Pick a demo account below or enter your own credentials.";
+    const demosBox = wrap.querySelector("#login-demos");
+    const demoList = wrap.querySelector("#demo-list");
+    for (const acct of DEMO_ACCOUNTS) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn demo-btn";
+      const name = document.createElement("span");
+      name.textContent = acct.label;
+      const cred = document.createElement("span");
+      cred.className = "demo-cred mono";
+      cred.textContent = `${acct.username} / ${acct.password}`;
+      b.append(name, cred);
+      b.addEventListener("click", () => {
+        userInput.value = acct.username;
+        passInput.value = acct.password;
+        errBox.textContent = "";
+        submitBtn.focus();
+      });
+      demoList.appendChild(b);
+    }
+    demosBox.hidden = false;
+  })();
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();

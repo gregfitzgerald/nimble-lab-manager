@@ -53,6 +53,21 @@ async def _integrity_handler(request: Request, exc: sqlite3.IntegrityError):
     )
 
 
+# A transient SQLite lock (writer contention that outlived busy_timeout) is not a
+# server bug -- answer 503 so the client can retry, instead of a scary 500. Other
+# OperationalErrors (a genuine schema/programming fault) still surface as 500.
+@app.exception_handler(sqlite3.OperationalError)
+async def _operational_handler(request: Request, exc: sqlite3.OperationalError):
+    msg = str(exc).lower()
+    if "locked" in msg or "busy" in msg:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "database is busy, please retry"},
+            headers={"Retry-After": "1"},
+        )
+    return JSONResponse(status_code=500, content={"detail": "internal server error"})
+
+
 # --------------------------------------------------------------------------- #
 # security middleware: CSRF double-submit + response security headers
 # --------------------------------------------------------------------------- #

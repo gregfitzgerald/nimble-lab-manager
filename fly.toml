@@ -13,6 +13,14 @@ primary_region = "ewr"       # pick a region near you
 
 [env]
   NLM_AUTH = "on"
+  NLM_SECURE_COOKIES = "1"   # force_https is on; never emit a non-Secure cookie
+  # Demo seeding is OFF by default, so the app starts with an EMPTY database and
+  # bootstraps a single admin on first boot. Set the admin password up front with
+  #   flyctl secrets set NLM_ADMIN_PASSWORD=... NLM_ADMIN_USER=...
+  # or read the generated one-time password from `flyctl logs` after first deploy,
+  # then change it in-app (Admin > People). To instead ship the interactive demo
+  # lab, set NLM_SEED_DEMO = "1" here (NOT recommended for a public URL: it
+  # enables the well-known admin/admin login).
 
 [[mounts]]
   source = "nlm_data"

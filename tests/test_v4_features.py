@@ -10,7 +10,7 @@ contents. Guards (last-admin/self) and stock math are checked end to end.
 def test_create_and_list_user(admin):
     r = admin.post("/api/users", json={
         "username": "newtech", "full_name": "New Tech", "role": "member",
-        "password": "pw12345",
+        "password": "pw123456",
     })
     assert r.status_code == 200, r.text
     users = {u["username"]: u for u in admin.get("/api/users").json()}
@@ -26,21 +26,21 @@ def test_create_user_role_gated(manager, member):
 
 def test_create_user_rejects_dupe_and_bad_role(admin):
     assert admin.post("/api/users", json={
-        "username": "admin", "full_name": "Dup", "role": "member", "password": "p"
+        "username": "admin", "full_name": "Dup", "role": "member", "password": "validpass1"
     }).status_code in (400, 409)
     assert admin.post("/api/users", json={
-        "username": "z", "full_name": "Z", "role": "wizard", "password": "p"
+        "username": "z", "full_name": "Z", "role": "wizard", "password": "validpass1"
     }).status_code == 400
 
 
 def test_deactivated_user_cannot_log_in(admin, make_client, db):
     admin.post("/api/users", json={
-        "username": "temp", "full_name": "Temp", "role": "member", "password": "secret1",
+        "username": "temp", "full_name": "Temp", "role": "member", "password": "secret12",
     })
     uid = db.execute("SELECT id FROM app_user WHERE username='temp'").fetchone()["id"]
     assert admin.patch(f"/api/users/{uid}", json={"is_active": False}).status_code == 200
     fresh = make_client()  # anonymous client
-    assert fresh.post("/api/login", json={"username": "temp", "password": "secret1"}).status_code == 401
+    assert fresh.post("/api/login", json={"username": "temp", "password": "secret12"}).status_code == 401
 
 
 def test_cannot_delete_or_demote_last_admin(admin, db):
@@ -52,12 +52,12 @@ def test_cannot_delete_or_demote_last_admin(admin, db):
 
 def test_password_reset(admin, make_client, db):
     admin.post("/api/users", json={
-        "username": "pwuser", "full_name": "PW", "role": "member", "password": "old",
+        "username": "pwuser", "full_name": "PW", "role": "member", "password": "oldpass12",
     })
     uid = db.execute("SELECT id FROM app_user WHERE username='pwuser'").fetchone()["id"]
-    assert admin.post(f"/api/users/{uid}/password", json={"password": "newpass"}).status_code == 200
+    assert admin.post(f"/api/users/{uid}/password", json={"password": "newpass12"}).status_code == 200
     fresh = make_client()
-    assert fresh.post("/api/login", json={"username": "pwuser", "password": "newpass"}).status_code == 200
+    assert fresh.post("/api/login", json={"username": "pwuser", "password": "newpass12"}).status_code == 200
 
 
 # --------------------------------------------------------------------------- #
