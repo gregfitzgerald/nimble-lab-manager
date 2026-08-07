@@ -149,6 +149,31 @@ there is no demo data to wipe, the destructive "Reset demo data" action is
 disabled outside demo mode. Cookies are marked `Secure` automatically over HTTPS
 (and `fly.toml` sets `NLM_SECURE_COOKIES=1`).
 
+### Alerts and email digests
+
+Open alerts -- expiring reagents, low stock, equipment service and calibration
+due, license expiry, POs awaiting approval, storage-compatibility conflicts --
+surface in the in-app notifications bell and, in **Settings > Email alert
+digest**, as a grouped preview you can view any time (and send on demand).
+
+To have them reach people who are *not* in the app, turn on the daily email
+digest: set `NLM_SCHEDULER=1`, list recipients in `NLM_DIGEST_TO` (comma
+separated), and configure SMTP:
+
+```bash
+NLM_SMTP_HOST=smtp.example.com NLM_SMTP_PORT=587 \
+NLM_SMTP_USER=alerts@example.com NLM_SMTP_PASSWORD=... \
+NLM_DIGEST_TO="pi@example.com,labmgr@example.com" \
+NLM_SCHEDULER=1 NLM_DIGEST_HOUR=7 \
+  <your launch command>
+```
+
+The digest is sent once per day at `NLM_DIGEST_HOUR` (local, default 7). Email is
+entirely optional: with SMTP unset the in-app preview still works, and an admin
+can trigger a test send from the digest panel. (On hosts that stop the machine
+when idle -- e.g. Fly.io `auto_stop_machines` -- keep one machine running so the
+scheduler can fire.)
+
 ## Feature tour
 
 The SPA has 20 views behind a role-aware left-hand nav, plus a live notification

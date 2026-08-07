@@ -20,6 +20,17 @@ services:
       NLM_SEED_DEMO: ${NLM_SEED_DEMO:-}
       # Uncomment when serving over HTTPS (e.g. behind a TLS proxy):
       # NLM_SECURE_COOKIES: "1"
+      # Daily email alert digest (optional). Set NLM_SCHEDULER=1 and the SMTP +
+      # recipient vars to email a summary of open alerts once a day; without
+      # them the digest is still viewable in-app (Settings > Email alert digest).
+      NLM_SCHEDULER: ${NLM_SCHEDULER:-}
+      NLM_DIGEST_TO: ${NLM_DIGEST_TO:-}
+      NLM_DIGEST_HOUR: ${NLM_DIGEST_HOUR:-7}
+      NLM_SMTP_HOST: ${NLM_SMTP_HOST:-}
+      NLM_SMTP_PORT: ${NLM_SMTP_PORT:-587}
+      NLM_SMTP_USER: ${NLM_SMTP_USER:-}
+      NLM_SMTP_PASSWORD: ${NLM_SMTP_PASSWORD:-}
+      NLM_SMTP_FROM: ${NLM_SMTP_FROM:-}
     restart: unless-stopped
 
 volumes:

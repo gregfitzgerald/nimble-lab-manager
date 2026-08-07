@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth
+from . import auth, scheduler
 from .api import auth_router, router
 from .db import ROOT_DIR, init_db
 
@@ -20,7 +20,11 @@ from .db import ROOT_DIR, init_db
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    yield
+    scheduler.start()  # opt-in daily alert digest (NLM_SCHEDULER); no-op otherwise
+    try:
+        yield
+    finally:
+        scheduler.stop()
 
 
 app = FastAPI(title="Nimble Lab Manager", lifespan=lifespan)

@@ -187,6 +187,94 @@ export async function render(root, ctx) {
   catCard.appendChild(catArea);
   root.appendChild(catCard);
 
+  // ----- Email alert digest -----------------------------------------------
+  const digestCard = el("div", "card");
+  digestCard.appendChild(el("div", "card-title", "Email alert digest"));
+  digestCard.appendChild(el("p", "muted",
+    "A daily email summarizing open alerts -- expiring reagents, low stock, "
+    + "equipment service, license and approval deadlines -- so they reach people "
+    + "who are not in the app. Configure delivery on the server (NLM_SMTP_HOST, "
+    + "NLM_DIGEST_TO, and NLM_SCHEDULER for the daily send); see the README. The "
+    + "preview below always works, even without email configured."));
+  const digestStatus = el("div", "muted", "Loading preview...");
+  digestCard.appendChild(digestStatus);
+  const digestBody = el("div");
+  digestBody.style.marginTop = "8px";
+  digestCard.appendChild(digestBody);
+  const sendRow = el("div");
+  sendRow.style.marginTop = "10px";
+  const sendBtn = el("button", "btn", "Send test digest now");
+  const sendMsg = el("span", "muted");
+  sendMsg.style.marginLeft = "8px";
+  sendRow.appendChild(sendBtn);
+  sendRow.appendChild(sendMsg);
+  digestCard.appendChild(sendRow);
+  root.appendChild(digestCard);
+
+  function renderDigestPreview(d) {
+    digestBody.innerHTML = "";
+    const summary = el("div", null, d.total
+      ? `${d.total} open alert${d.total === 1 ? "" : "s"}`
+        + (d.urgent ? ` (${d.urgent} urgent)` : "")
+      : "No open alerts right now.");
+    summary.style.fontWeight = "600";
+    digestBody.appendChild(summary);
+    for (const g of (d.groups || [])) {
+      const gt = el("div", null, `${g.label} (${g.items.length})`);
+      gt.style.marginTop = "6px";
+      gt.style.fontWeight = "600";
+      digestBody.appendChild(gt);
+      const ul = el("ul");
+      ul.style.margin = "2px 0 0 18px";
+      for (const it of g.items) {
+        const li = el("li", null, it.message);
+        if (it.severity === "danger") li.style.color = "var(--danger, #b00020)";
+        ul.appendChild(li);
+      }
+      digestBody.appendChild(ul);
+    }
+  }
+
+  (async () => {
+    try {
+      const d = await ctx.api.get("/api/notifications/digest/preview");
+      digestStatus.textContent = d.email_configured
+        ? "Email delivery: configured. Recipients: "
+          + ((d.recipients || []).join(", ") || "(none -- set NLM_DIGEST_TO)") + "."
+        : "Email delivery: not configured on the server -- preview only.";
+      renderDigestPreview(d);
+    } catch (err) {
+      digestStatus.textContent = "Could not load digest preview: "
+        + (err && err.message ? err.message : err);
+    }
+  })();
+
+  sendBtn.addEventListener("click", async () => {
+    sendBtn.disabled = true;
+    sendMsg.textContent = "Sending...";
+    try {
+      const r = await ctx.api.post("/api/notifications/digest/send", {});
+      if (r.sent) {
+        sendMsg.textContent = "Sent to " + r.recipients.join(", ") + ".";
+        ctx.toast("Digest sent", "ok");
+      } else {
+        const why = {
+          "no-recipients": "No recipients configured (set NLM_DIGEST_TO).",
+          "smtp-not-configured": "Email is not configured on the server.",
+          "no-open-alerts": "No open alerts to send.",
+        }[r.reason] || r.reason;
+        sendMsg.textContent = why;
+        ctx.toast("Not sent: " + why, "warn");
+      }
+    } catch (err) {
+      sendMsg.textContent = "";
+      ctx.toast("Send failed: "
+        + (err && err.message ? err.message : err), "danger");
+    } finally {
+      sendBtn.disabled = false;
+    }
+  });
+
   // ----- Save / reset ------------------------------------------------------
   const actions = el("div", "card");
   const btnRow = el("div");

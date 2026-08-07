@@ -32,7 +32,7 @@ from fastapi import (
 )
 from pydantic import BaseModel
 
-from . import auth
+from . import auth, notify
 from .db import ROOT_DIR, get_conn, rebuild_db
 
 router = APIRouter(prefix="/api", dependencies=[Depends(auth.current_user)])
@@ -4167,6 +4167,40 @@ def mark_all_notifications_read(user: dict = Depends(auth.current_user)):
         return {"ok": True, "marked": cur.rowcount}
     finally:
         conn.close()
+
+
+@router.get("/notifications/digest/preview")
+def preview_digest(user: dict = Depends(auth.require_role("manager"))):
+    """Render the current alert digest (subject + grouped items + counts) without
+    sending anything -- powers the in-app 'Email digest' preview. Also reports
+    whether email delivery is configured, so the UI can say so."""
+    conn = get_conn()
+    try:
+        digest = notify.build_digest(conn)
+    finally:
+        conn.close()
+    digest["email_configured"] = notify.smtp_configured()
+    digest["recipients"] = notify.digest_recipients()
+    return digest
+
+
+@router.post("/notifications/digest/send", dependencies=[Depends(auth.require_role("admin"))])
+def send_digest_now(user: dict = Depends(auth.require_role("admin"))):
+    """Send the alert digest immediately (a manual/test trigger). Returns what
+    happened: sent + recipients on success, or a reason (no-recipients /
+    smtp-not-configured / no-open-alerts) so the admin gets clear feedback."""
+    conn = get_conn()
+    try:
+        result = notify.send_digest(conn, force_when_empty=True)
+    finally:
+        conn.close()
+    return {
+        "sent": result["sent"],
+        "reason": result["reason"],
+        "recipients": result["recipients"],
+        "total": result["total"],
+        "urgent": result["urgent"],
+    }
 
 
 # --------------------------------------------------------------------------- #
