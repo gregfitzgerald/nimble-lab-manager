@@ -1458,6 +1458,29 @@ def restock_item(
         conn.close()
 
 
+class ResolveCodeBody(BaseModel):
+    code: str
+
+
+@router.post("/scan/resolve")
+def resolve_scan(body: ResolveCodeBody):
+    """Resolve a scanned QR/barcode to an item, so the client never has to know
+    the code formats (QR deep link, item id, or vendor catalog number)."""
+    conn = get_conn()
+    try:
+        item_id = _resolve_scan_code(conn, body.code)
+        if item_id is None:
+            return {"matched": False, "item": None}
+        row = conn.execute(
+            """SELECT item_id, item_name, unit, quantity_on_hand, status
+                 FROM inventory WHERE item_id = ?""",
+            (item_id,),
+        ).fetchone()
+        return {"matched": True, "item": dict(row) if row else None}
+    finally:
+        conn.close()
+
+
 class LotPatchBody(BaseModel):
     lot_number: Optional[str] = None
     expiry_date: Optional[str] = None

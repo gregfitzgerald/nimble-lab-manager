@@ -227,7 +227,14 @@ bell and global search in the top bar.
   session flags containers the count could not find (so they stop reading as
   present everywhere else) and lists the affected items for reconciliation.
   Quantities are never adjusted automatically, because a container is not
-  necessarily one stock unit.
+  necessarily one stock unit. **Scan with camera** walks the shelf counting tube
+  after tube from a phone.
+- **Scanning** -- printed QR labels resolve to their item, and any code (QR deep
+  link, item id, or vendor catalog number) can be scanned with the device camera
+  from Stocktake or the command palette's "Scan a label". Uses the browser's
+  built-in barcode reader, so it stays dependency-free; where that is
+  unavailable (notably iOS Safari) it says so and falls back to typing the code,
+  and the phone's own camera app still opens the label's deep link.
 - **Tutorial** ("Lab Tycoon") -- an interactive, hands-on tutorial: the
   supply-chain sim that teaches the app by writing through the real API.
 

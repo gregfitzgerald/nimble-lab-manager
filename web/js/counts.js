@@ -2,6 +2,8 @@
 // Vanilla DOM, design-system classes only. Contract: export const view = {id,label,minRole};
 // export async function render(root, ctx, params).
 
+import { openScanner } from "./scanner.js";
+
 export const view = { id: "stocktake", label: "Stocktake", minRole: "member" };
 
 // ---- tiny helpers ---------------------------------------------------------
@@ -302,20 +304,27 @@ export async function render(root, ctx, params) {
       scanInput.style.flex = "1 1 auto";
       scanInput.placeholder = "Item code, id, or scanned QR URL";
       const scanBtn = el("button", "btn btn-primary btn-sm", "Scan");
+
+      // refresh=false while the camera is open: re-rendering the view would
+      // tear down the modal holding the live camera stream.
+      const submitCode = async (code, refresh) => {
+        const result = await ctx.api.post(`/api/counts/${sessionId}/scan`, { code });
+        if (result.matched) {
+          ctx.toast("Found: " + ((result.line && result.line.item_name) || "item"), "ok");
+        } else {
+          ctx.toast("Not expected here -- logged as extra", "warn");
+        }
+        if (refresh) await showDetail(sessionId);
+        return result;
+      };
+
       const doScan = async () => {
         const code = scanInput.value.trim();
         if (!code) { ctx.toast("Enter a code to scan", "warn"); return; }
         scanBtn.disabled = true;
         try {
-          const result = await ctx.api.post(`/api/counts/${sessionId}/scan`, { code });
-          if (result.matched) {
-            const itemName = (result.line && result.line.item_name) || "item";
-            ctx.toast("Found: " + itemName, "ok");
-          } else {
-            ctx.toast("Not expected here -- logged as extra", "warn");
-          }
           scanInput.value = "";
-          await showDetail(sessionId);
+          await submitCode(code, true);
         } catch (err) {
           ctx.toast("Scan failed: " + err.message, "danger");
           scanBtn.disabled = false;
@@ -324,6 +333,27 @@ export async function render(root, ctx, params) {
       scanBtn.addEventListener("click", doScan);
       scanInput.addEventListener("keydown", (ev) => { if (ev.key === "Enter") doScan(); });
       scanRow.append(scanInput, scanBtn);
+
+      // Camera scanning: the point of a stocktake is walking the shelf with a
+      // phone, so keep the scanner open and count tube after tube.
+      const camBtn = el("button", "btn btn-sm", "Scan with camera");
+      camBtn.addEventListener("click", () => {
+        let scanned = 0;
+        openScanner(ctx, {
+          title: "Scan to count",
+          hint: "Scan each item's QR label. The count updates as you go; press "
+            + "Done when finished.",
+          continuous: true,
+          onCode: async (code) => {
+            await submitCode(code, false);
+            scanned += 1;
+            return true;  // keep the camera running
+          },
+          // Pull the freshly-counted lines in once the camera is dismissed.
+          onClose: () => { if (scanned) showDetail(sessionId); },
+        });
+      });
+      scanRow.appendChild(camBtn);
       scanCard.appendChild(scanRow);
       container.appendChild(scanCard);
     }

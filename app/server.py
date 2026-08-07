@@ -109,8 +109,12 @@ async def security_middleware(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
+    # camera=(self) enables in-app barcode/QR scanning (stocktake and the global
+    # scan action); geolocation and microphone stay off. The browser still asks
+    # the user for camera permission -- this header only stops it being blocked
+    # outright.
     response.headers["Permissions-Policy"] = (
-        "geolocation=(), microphone=(), camera=()"
+        "geolocation=(), microphone=(), camera=(self)"
     )
     if path not in _CSP_EXEMPT:
         response.headers["Content-Security-Policy"] = _CSP

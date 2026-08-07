@@ -27,6 +27,7 @@ import * as game from "./game.js";
 import * as settings from "./settings.js";
 import * as help from "./help.js";
 import * as auth from "./auth.js";
+import { openScanner } from "./scanner.js";
 
 // --------------------------------------------------------------------------- //
 // api client -- paths are absolute ("/api/..."), same origin as the SPA.
@@ -915,6 +916,26 @@ function closeCommandPalette() {
   const si = document.getElementById("search-input");
   if (si) si.blur();
 }
+// Scan a printed label and open that item. The server owns code parsing (QR
+// deep link / item id / vendor catalog number) via /api/scan/resolve, so the
+// client stays dumb about formats.
+function scanToItem() {
+  openScanner(ctx, {
+    title: "Scan a label",
+    hint: "Point the camera at an item's QR label to open its record.",
+    onCode: async (code) => {
+      const res = await ctx.api.post("/api/scan/resolve", { code });
+      if (!res.matched) {
+        ctx.toast("That code does not match anything on file", "warn");
+        return true;  // keep scanning
+      }
+      ctx.toast("Opening " + res.item.item_name, "ok");
+      navigate("inventory", { itemId: res.item.item_id });
+      return false;  // close the scanner
+    },
+  });
+}
+
 function openCommandPalette() {
   if (paletteEl) return;
   const backdrop = el2("div", "cmdk-backdrop");
@@ -968,6 +989,12 @@ function openCommandPalette() {
   function commandList(q) {
     const out = [];
     const rank = ROLE_RANK[(ctx.user || {}).role] || 0;
+    // Scan a printed label to jump straight to that item -- the bench workflow
+    // the QR labels were always for.
+    out.push({
+      grp: "Create", label: "Scan a label (camera)", key: "scan barcode qr camera",
+      run: () => scanToItem(),
+    });
     for (const qn of QUICK_NEW) {
       if (rank < qn.minRank || !isNavTarget(qn.target)) continue;
       out.push({ grp: "Create", label: qn.label, key: qn.label.toLowerCase(),
