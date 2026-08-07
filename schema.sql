@@ -171,7 +171,11 @@ CREATE TABLE usage_event (   -- OUTFLOW / activity log (drives analytics AND the
     item_id       INTEGER NULL REFERENCES inventory(item_id),
     container_id  INTEGER NULL REFERENCES container(id),
     staff_id      INTEGER NULL REFERENCES staff(staff_id),
-    event_type    TEXT    NOT NULL,   -- consume | restock | move | discard | expire
+    -- consume | restock | move | discard | expire | adjust
+    -- 'adjust' is a stock-take correction (see POST /items/{id}/set-quantity):
+    -- quantity holds the signed delta, and consumption analytics exclude it so a
+    -- recount is never mistaken for usage.
+    event_type    TEXT    NOT NULL,
     quantity      INTEGER NULL,
     occurred_at   TIMESTAMP NOT NULL,
     note          TEXT    NULL,

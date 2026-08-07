@@ -50,7 +50,9 @@ CREATE TABLE IF NOT EXISTS app_user (
     password_salt  TEXT    NOT NULL,
     iterations     INTEGER NOT NULL,
     staff_id       INTEGER NULL REFERENCES staff(staff_id),
-    created_at     TIMESTAMP NOT NULL
+    created_at     TIMESTAMP NOT NULL,
+    -- Must mirror schema.sql: login_user()/current_user() both filter on it.
+    is_active      INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS session (

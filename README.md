@@ -183,7 +183,12 @@ bell and global search in the top bar.
   feed built from live state.
 - **Inventory** -- item list and detail: multi-lot expiry, min-max reorder,
   hazard class and CAS number, controlled flag, linked SDS/CoA, printable QR
-  label, and consume/restock actions that write `usage_event` rows.
+  label, and consume/restock actions that write `usage_event` rows. When the
+  shelf and the record disagree, **Set actual quantity** reconciles to the
+  counted number in one audited step -- recorded as an adjustment, not as
+  consumption, so a recount never distorts usage analytics or forecasts.
+  Discontinued items can be deprecated (a reversible soft archive that keeps
+  all their history) rather than deleted.
 - **Catalog** -- an offline vendor catalog (real catalog numbers, pack sizes,
   prices) with cross-vendor price comparison, one-click add-to-inventory, and
   substitute groups so a backordered vendor falls through to the next-ranked

@@ -29,6 +29,10 @@ primary_region = "ewr"       # pick a region near you
 [http_service]
   internal_port = 8770
   force_https = true
+  # Scale-to-zero keeps an idle demo free. NOTE: a stopped machine runs no
+  # background thread, so the daily email digest (NLM_SCHEDULER) cannot fire
+  # while asleep -- if you rely on it, set auto_stop_machines = false and
+  # min_machines_running = 1.
   auto_stop_machines = "stop"
   auto_start_machines = true
   min_machines_running = 0

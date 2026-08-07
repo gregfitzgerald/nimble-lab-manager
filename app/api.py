@@ -1415,6 +1415,99 @@ def restock_item(
         conn.close()
 
 
+class SetQuantityBody(BaseModel):
+    quantity: int
+    reason: Optional[str] = None
+    staff_id: Optional[int] = None
+
+
+@router.post("/items/{item_id}/set-quantity")
+def set_item_quantity(
+    item_id: int,
+    body: SetQuantityBody,
+    user: dict = Depends(auth.require_role("member")),
+):
+    """Reconcile stock to a counted value: "the shelf has 7, make it 7".
+
+    Consume/restock express *movements*; this expresses a correction, which is
+    what a physical count produces. Doing it as one action (rather than
+    consuming the difference) keeps usage history honest -- the delta is
+    recorded as an 'adjust' event, which analytics deliberately ignore, so a
+    recount never looks like consumption.
+
+    Lots: when the count is below the recorded lot total, lots are trimmed
+    first-expiry-first to match, so expiry alerts stop referring to stock that
+    is not there. A count *above* the lot total leaves lots alone -- the extra
+    units have no known lot or expiry, and inventing one would be a lie; the
+    response reports the shortfall so the caller can prompt for a lot.
+    """
+    if body.quantity is None or body.quantity < 0:
+        raise HTTPException(status_code=400, detail="quantity must be zero or positive")
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT quantity_on_hand FROM inventory WHERE item_id = ?", (item_id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="item not found")
+        previous = row["quantity_on_hand"]
+        delta = body.quantity - previous
+
+        conn.execute(
+            "UPDATE inventory SET quantity_on_hand = ? WHERE item_id = ?",
+            (body.quantity, item_id),
+        )
+
+        # Trim lots FEFO when they now over-state what is physically present.
+        lot_total = conn.execute(
+            "SELECT COALESCE(SUM(quantity), 0) AS t FROM item_lot WHERE item_id = ?",
+            (item_id,),
+        ).fetchone()["t"]
+        lots_trimmed = 0
+        excess = lot_total - body.quantity
+        if excess > 0:
+            for lot in conn.execute(
+                """SELECT id, quantity FROM item_lot
+                   WHERE item_id = ? AND quantity > 0
+                   ORDER BY (expiry_date IS NULL), expiry_date, id""",
+                (item_id,),
+            ).fetchall():
+                if excess <= 0:
+                    break
+                take = min(lot["quantity"], excess)
+                conn.execute(
+                    "UPDATE item_lot SET quantity = quantity - ? WHERE id = ?",
+                    (take, lot["id"]),
+                )
+                excess -= take
+                lots_trimmed += take
+
+        conn.execute(
+            """INSERT INTO usage_event
+                   (item_id, container_id, staff_id, event_type, quantity,
+                    occurred_at, note)
+               VALUES (?, NULL, ?, 'adjust', ?, datetime('now'), ?)""",
+            (item_id, body.staff_id, delta, body.reason),
+        )
+        _audit(conn, user, "item.set_quantity", "inventory", item_id,
+               f"{previous} -> {body.quantity}"
+               + (f" ({body.reason})" if body.reason else ""))
+        conn.commit()
+        # Positive when the count exceeds what the lots account for.
+        unlotted = body.quantity - max(lot_total - lots_trimmed, 0)
+        return {
+            "ok": True,
+            "item_id": item_id,
+            "previous": previous,
+            "quantity_on_hand": body.quantity,
+            "delta": delta,
+            "lots_trimmed": lots_trimmed,
+            "untracked_by_lot": max(unlotted, 0),
+        }
+    finally:
+        conn.close()
+
+
 # --------------------------------------------------------------------------- #
 # containers
 # --------------------------------------------------------------------------- #

@@ -1,17 +1,27 @@
 """Opt-in background scheduler for the daily alert digest.
 
-A single daemon thread wakes periodically and, once per day at or after a
-configured hour, emails the alert digest (see app.notify). It is entirely
-opt-in (NLM_SCHEDULER) and never runs during tests. The "sent today" marker is
-persisted next to the database file so a restart does not re-send.
+A daemon thread wakes periodically and, once per day at or after a configured
+hour, emails the alert digest (see app.notify). Entirely opt-in (NLM_SCHEDULER);
+never runs during tests.
+
+The "already sent today" marker lives in the app_setting table, not a sidecar
+file, for two reasons: it rides the same volume as the database (a file beside
+lab.db would sit on the container's ephemeral layer, since only lab.db itself is
+symlinked onto the mount), and it lets the day be *claimed atomically*. Claiming
+is a single conditional UPDATE, so with several workers -- or several machines --
+sharing one database, exactly one of them sends. A failed send releases the claim
+so the next tick retries.
 
 Environment:
   NLM_SCHEDULER     "1" to enable the daily digest thread (default off)
-  NLM_DIGEST_HOUR   local hour (0-23) to send at, default 7
+  NLM_DIGEST_HOUR   hour (0-23) to send at, default 7
+  NLM_TZ            IANA zone for that hour, e.g. "America/New_York". Defaults
+                    to the server's local time -- which in a container is UTC,
+                    so set this to get the lab's actual morning.
 
 Note: on platforms that stop the machine when idle (e.g. Fly.io
-auto_stop_machines), a background thread cannot run while the machine is asleep;
-keep at least one machine running for scheduled digests.
+auto_stop_machines with min_machines_running = 0), no thread runs while the
+machine is asleep, so the digest cannot fire. Keep one machine running.
 """
 
 import datetime
@@ -22,6 +32,8 @@ import threading
 from . import notify
 
 log = logging.getLogger("nlm.scheduler")
+
+_MARKER_KEY = "digest_last_sent"
 
 _CHECK_INTERVAL_SEC = 900  # re-check every 15 minutes
 _thread = None
@@ -41,45 +53,67 @@ def _digest_hour():
         return 7
 
 
-def _marker_path():
-    from .db import DB_PATH
+def _now():
+    """Current time in the configured zone (NLM_TZ), else server-local."""
+    name = os.environ.get("NLM_TZ", "").strip()
+    if name:
+        try:
+            from zoneinfo import ZoneInfo
 
-    return DB_PATH + ".digest"
+            return datetime.datetime.now(ZoneInfo(name))
+        except Exception:  # noqa: BLE001 -- bad/unknown zone must not stop the digest
+            log.warning("NLM_TZ=%r is not a usable time zone; using server time", name)
+    return datetime.datetime.now()
 
 
-def _sent_today():
-    try:
-        with open(_marker_path(), encoding="utf-8") as fh:
-            return fh.read().strip() == datetime.date.today().isoformat()
-    except OSError:
-        return False
+def _claim_today(conn):
+    """Atomically claim today's digest. True only for the caller that wins.
+
+    A single conditional upsert: the row is written only when it does not
+    already hold today's date, so concurrent workers/machines cannot both send.
+    """
+    today = _now().date().isoformat()
+    cur = conn.execute(
+        """INSERT INTO app_setting (key, value) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            WHERE app_setting.value IS NOT excluded.value""",
+        (_MARKER_KEY, today),
+    )
+    conn.commit()
+    return cur.rowcount > 0
 
 
-def _mark_sent_today():
-    try:
-        with open(_marker_path(), "w", encoding="utf-8") as fh:
-            fh.write(datetime.date.today().isoformat())
-    except OSError as exc:
-        log.warning("could not write digest marker: %s", exc)
+def _release_claim(conn):
+    """Undo a claim so a failed send is retried on the next tick."""
+    conn.execute("DELETE FROM app_setting WHERE key = ?", (_MARKER_KEY,))
+    conn.commit()
 
 
 def _tick():
     """One scheduler check: send the digest if it is time and not already sent."""
-    if datetime.datetime.now().hour < _digest_hour() or _sent_today():
+    if _now().hour < _digest_hour():
         return
     from .db import get_conn
 
     conn = get_conn()
     try:
-        result = notify.send_digest(conn)
+        # Claim first, then send: whoever wins the claim owns today's send.
+        if not _claim_today(conn):
+            return
+        try:
+            result = notify.send_digest(conn)
+        except Exception:
+            _release_claim(conn)
+            raise
+        # A send failure (or a missing/unconfigured mailer) should not consume
+        # the day -- release so a later tick, or fixed config, still delivers.
+        if not (result.get("sent") or result.get("reason") == "no-open-alerts"):
+            _release_claim(conn)
+            log.warning("digest not sent (%s); will retry", result.get("reason"))
+        elif result.get("sent"):
+            log.info("daily digest sent to %s", result.get("recipients"))
     finally:
         conn.close()
-    # Mark the day done if we sent, or if there was simply nothing to report --
-    # either way today's digest decision is made and should not repeat.
-    if result.get("sent") or result.get("reason") == "no-open-alerts":
-        _mark_sent_today()
-        if result.get("sent"):
-            log.info("daily digest sent to %s", result.get("recipients"))
 
 
 def _run(stop_event):

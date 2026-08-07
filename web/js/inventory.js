@@ -730,6 +730,7 @@ export async function render(root, ctx, params) {
     items.push({ label: "View details", onClick: () => openProductModal(it.item_id, it.item_name) });
     if (canOrder) items.push({ label: "Order / reorder", onClick: () => orderItem(it) });
     items.push({ label: "Log usage", onClick: () => logUsage(it) });
+    if (canOrder) items.push({ label: "Set actual quantity (count)", onClick: () => setActualQuantity(it) });
     if (it.sds_url) items.push({ label: "View SDS", onClick: () => window.open(it.sds_url, "_blank", "noopener") });
     if (it.coa_url) items.push({ label: "View CoA", onClick: () => window.open(it.coa_url, "_blank", "noopener") });
     if (it.product_url) items.push({ label: "View product page", onClick: () => window.open(it.product_url, "_blank", "noopener") });
@@ -754,6 +755,87 @@ export async function render(root, ctx, params) {
       }
     }
     ctx.contextMenu(e.clientX, e.clientY, items, it.item_name);
+  }
+
+  // Reconcile the record to a physical count. This is deliberately NOT
+  // "consume the difference": the delta is stored as an adjustment, so a
+  // recount never shows up as usage in the analytics.
+  function setActualQuantity(it) {
+    let qtyInput, reasonInput;
+    const handle = ctx.modal({
+      title: "Set actual quantity -- " + it.item_name,
+      render: (body) => {
+        const p = document.createElement("p");
+        p.className = "muted";
+        p.textContent = "The record currently says " + it.quantity_on_hand
+          + " " + (it.unit || "units") + ". Enter what is physically there; "
+          + "the difference is recorded as an audited adjustment.";
+        body.appendChild(p);
+
+        const qLabel = document.createElement("label");
+        qLabel.textContent = "Counted quantity";
+        qLabel.style.display = "block";
+        qLabel.style.marginTop = "8px";
+        qtyInput = document.createElement("input");
+        qtyInput.className = "chip";
+        qtyInput.type = "number";
+        qtyInput.min = "0";
+        qtyInput.value = String(it.quantity_on_hand);
+        qLabel.appendChild(qtyInput);
+        body.appendChild(qLabel);
+
+        const rLabel = document.createElement("label");
+        rLabel.textContent = "Reason (optional)";
+        rLabel.style.display = "block";
+        rLabel.style.marginTop = "8px";
+        reasonInput = document.createElement("input");
+        reasonInput.className = "chip";
+        reasonInput.placeholder = "e.g. annual count, breakage, found extra";
+        rLabel.appendChild(reasonInput);
+        body.appendChild(rLabel);
+      },
+      actions: [
+        { label: "Cancel", onClick: (h) => h.close() },
+        {
+          label: "Save count",
+          primary: true,
+          onClick: async (h) => {
+            const qty = parseInt(qtyInput.value, 10);
+            if (!Number.isFinite(qty) || qty < 0) {
+              ctx.toast("Enter a quantity of zero or more", "warn");
+              return;
+            }
+            try {
+              const res = await ctx.api.post(
+                "/api/items/" + it.item_id + "/set-quantity",
+                { quantity: qty, reason: reasonInput.value.trim() || null },
+              );
+              h.close();
+              const d = res.delta;
+              ctx.toast(
+                it.item_name + " set to " + res.quantity_on_hand
+                + (d ? " (" + (d > 0 ? "+" : "") + d + ")" : " (no change)"),
+                "ok",
+              );
+              if (res.untracked_by_lot > 0) {
+                ctx.toast(
+                  res.untracked_by_lot + " unit(s) have no lot/expiry recorded"
+                  + " -- restock with a lot to track expiry.",
+                  "warn",
+                );
+              }
+              await loadItems();
+              drawTable();
+            } catch (err) {
+              ctx.toast("Could not set quantity: "
+                + (err && err.message ? err.message : err), "danger");
+            }
+          },
+        },
+      ],
+    });
+    setTimeout(() => { if (qtyInput) { qtyInput.focus(); qtyInput.select(); } }, 0);
+    return handle;
   }
 
   // Soft-archive / restore an item. Deprecating hides it from active pick-lists
