@@ -85,7 +85,7 @@ def _load_schema():
 
     tmp_dir = tempfile.mkdtemp(prefix="nlm-fuzz-")
     appdb.DB_PATH = os.path.join(tmp_dir, "lab.db")
-    appdb.init_db(force=True)  # seed schema + demo data into the temp DB
+    appdb.init_db(force=True, seed_demo=True)  # seed schema + demo data into the temp DB
 
     # Import only after DB_PATH is set so any connection hits the temp copy.
     from app.server import app

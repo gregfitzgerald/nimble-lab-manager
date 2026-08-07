@@ -76,7 +76,7 @@ def live_server(tmp_path_factory):
     appdb.DB_PATH = str(db_file)
     os.environ["NLM_AUTH"] = "off"  # synthetic admin: SPA boots past login
 
-    appdb.init_db(force=True)  # seed schema + demo data into the temp DB
+    appdb.init_db(force=True, seed_demo=True)  # seed schema + demo data into the temp DB
 
     from app.server import app
 
