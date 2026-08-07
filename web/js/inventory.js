@@ -757,6 +757,63 @@ export async function render(root, ctx, params) {
     ctx.contextMenu(e.clientX, e.clientY, items, it.item_name);
   }
 
+  // Edit a lot's identity (number / expiry / CoA). Opening balances and CSV
+  // imports create a lot with no expiry, so this is what lets that stock become
+  // visible to expiry tracking.
+  function editLot(lot, itemId) {
+    let numInput, expInput, coaInput;
+    ctx.modal({
+      title: "Edit lot",
+      render: (body) => {
+        const mk = (labelText, value, type, placeholder) => {
+          const lab = document.createElement("label");
+          lab.textContent = labelText;
+          lab.style.display = "block";
+          lab.style.marginTop = "8px";
+          const inp = document.createElement("input");
+          inp.className = "chip";
+          if (type) inp.type = type;
+          if (placeholder) inp.placeholder = placeholder;
+          inp.value = value || "";
+          lab.appendChild(inp);
+          body.appendChild(lab);
+          return inp;
+        };
+        numInput = mk("Lot number", lot.lot_number, "text", "e.g. LOT-1234");
+        expInput = mk("Expiry date", lot.expiry_date, "date", "YYYY-MM-DD");
+        coaInput = mk("CoA URL", lot.coa_url, "url", "https://...");
+        const hint = el("p", "muted",
+          "Setting an expiry puts this lot's stock into expiry alerts and the "
+          + "dashboard's expiring/expired counts.");
+        hint.style.marginTop = "10px";
+        body.appendChild(hint);
+      },
+      actions: [
+        { label: "Cancel", onClick: (h) => h.close() },
+        {
+          label: "Save lot",
+          primary: true,
+          onClick: async (h) => {
+            const payload = {
+              lot_number: numInput.value.trim() || null,
+              expiry_date: expInput.value.trim() || null,
+              coa_url: coaInput.value.trim() || null,
+            };
+            try {
+              await ctx.api.patch("/api/lots/" + lot.id, payload);
+              h.close();
+              ctx.toast("Lot updated", "ok");
+              showDetail(itemId);
+            } catch (err) {
+              ctx.toast("Could not update lot: "
+                + (err && err.message ? err.message : err), "danger");
+            }
+          },
+        },
+      ],
+    });
+  }
+
   // Reconcile the record to a physical count. This is deliberately NOT
   // "consume the difference": the delta is stored as an adjustment, so a
   // recount never shows up as usage in the analytics.
@@ -1426,7 +1483,7 @@ export async function render(root, ctx, params) {
       const scroll = el("div", "table-scroll");
       const t = document.createElement("table");
       t.className = "table";
-      t.innerHTML = `<thead><tr><th>Lot number</th><th class="right">Qty</th><th>Expiry</th><th>Received</th><th>CoA</th></tr></thead>`;
+      t.innerHTML = `<thead><tr><th>Lot number</th><th class="right">Qty</th><th>Expiry</th><th>Received</th><th>CoA</th>${canEdit ? "<th></th>" : ""}</tr></thead>`;
       const tb = document.createElement("tbody");
       for (const lot of data.lots) {
         const tr = document.createElement("tr");
@@ -1454,6 +1511,16 @@ export async function render(root, ctx, params) {
         if (lot.coa_url) coa.appendChild(docLink("CoA", lot.coa_url));
         else coa.appendChild(el("span", "muted", "--"));
         tr.appendChild(coa);
+        // Stock that arrived as an opening balance or a CSV import has a lot
+        // with no expiry; without this there is no way to ever add one, and
+        // expiry alerts (which read lots) can never see that stock.
+        if (canEdit) {
+          const actionTd = document.createElement("td");
+          const editBtn = el("button", "btn btn-sm", "Edit");
+          editBtn.addEventListener("click", () => editLot(lot, itemId));
+          actionTd.appendChild(editBtn);
+          tr.appendChild(actionTd);
+        }
         tb.appendChild(tr);
       }
       t.appendChild(tb);

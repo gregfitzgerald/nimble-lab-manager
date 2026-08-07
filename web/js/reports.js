@@ -105,6 +105,62 @@ export async function render(root, ctx, params) {
     glance.appendChild(el("p", "muted", "Could not load summary counts: " + (err && err.message ? err.message : String(err))));
   }
 
+  // ---- data health (manager+) ----
+  // The stock figure and the per-lot quantities are separate numbers. When they
+  // disagree the app is telling two different stories -- stock with no lot is
+  // invisible to expiry alerts, and lots claiming more than the item holds is a
+  // real error. Surface it instead of letting it rot.
+  if (canManage) {
+    const healthCard = el("div", "card section-gap");
+    healthCard.appendChild(el("div", "card-title", "Data health"));
+    root.appendChild(healthCard);
+    try {
+      const rep = await ctx.api.get("/api/integrity/stock");
+      if (!rep.count) {
+        healthCard.appendChild(el("p", "muted",
+          "Every item's lots add up to its recorded stock."));
+      } else {
+        const p = el("p", "muted",
+          rep.count + " item" + (rep.count === 1 ? "" : "s")
+          + " where the lots do not add up to the recorded stock. "
+          + "\"Untracked\" is stock with no lot behind it, so expiry alerts "
+          + "cannot see it -- add a lot expiry from the item's Lots card. "
+          + "\"Over-lotted\" means lots claim more than the item holds; "
+          + "reconcile with Set actual quantity.");
+        healthCard.appendChild(p);
+        const wrap = el("div", "table-scroll");
+        const table = el("table", "table");
+        table.innerHTML = "<thead><tr><th>Item</th><th class=\"right\">On hand</th>"
+          + "<th class=\"right\">In lots</th><th>Issue</th></tr></thead>";
+        const tb = el("tbody");
+        for (const r of rep.items) {
+          const tr = el("tr", "row-link");
+          tr.appendChild(el("td", null, r.item_name));
+          tr.appendChild(el("td", "right mono", String(r.quantity_on_hand)));
+          tr.appendChild(el("td", "right mono", String(r.lot_total)));
+          const issue = el("td");
+          if (r.untracked) {
+            issue.appendChild(el("span", "badge badge-warn",
+              r.untracked + " untracked"));
+          }
+          if (r.over_lotted) {
+            issue.appendChild(el("span", "badge badge-danger",
+              r.over_lotted + " over-lotted"));
+          }
+          tr.appendChild(issue);
+          tr.addEventListener("click", () => ctx.navigate("inventory", { itemId: r.item_id }));
+          tb.appendChild(tr);
+        }
+        table.appendChild(tb);
+        wrap.appendChild(table);
+        healthCard.appendChild(wrap);
+      }
+    } catch (err) {
+      healthCard.appendChild(el("p", "muted", "Could not load data health: "
+        + (err && err.message ? err.message : String(err))));
+    }
+  }
+
   // ---- data exports ----
   const exportsCard = el("div", "card section-gap");
   exportsCard.appendChild(el("div", "card-title", "Data exports"));

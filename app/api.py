@@ -11,6 +11,7 @@ Mutations additionally require member+, and reset requires manager+.
 import csv
 import io
 import json
+import logging
 import os
 import re
 import secrets as _secrets
@@ -34,6 +35,8 @@ from pydantic import BaseModel
 
 from . import auth, notify
 from .db import ROOT_DIR, get_conn, rebuild_db
+
+log = logging.getLogger("nlm.api")
 
 router = APIRouter(prefix="/api", dependencies=[Depends(auth.current_user)])
 auth_router = APIRouter(prefix="/api")
@@ -127,7 +130,37 @@ def _audit(conn, user, action, entity_type=None, entity_id=None, detail=None):
             (uid, uname, action, entity_type, entity_id, detail),
         )
     except Exception:
-        pass
+        # Never break the operation being recorded -- but never fail silently
+        # either: a schema drift that quietly stopped writing history is exactly
+        # the failure an audit trail must not hide.
+        log.exception(
+            "AUDIT WRITE FAILED for action=%r entity=%s/%s; the audit trail is "
+            "now incomplete", action, entity_type, entity_id,
+        )
+
+
+def _open_lot(conn, item_id, quantity, expiry=None, label="opening balance"):
+    """Create the lot that accounts for an item's opening stock.
+
+    Stock used to be able to exist with no lot behind it (item creation and CSV
+    import both set quantity_on_hand directly), which left two numbers that
+    could not be reconciled -- and, because expiry alerts read item_lot, meant
+    imported stock was invisible to expiry tracking. Every opening balance now
+    gets a lot, so SUM(item_lot.quantity) always accounts for what is on hand.
+
+    The expiry is unknown at import time unless the sheet supplies one; the lot
+    is created without it and can be filled in later (PATCH /api/lots/{id}),
+    which is what makes imported stock trackable at all.
+    """
+    if not quantity or quantity <= 0:
+        return None
+    cur = conn.execute(
+        """INSERT INTO item_lot
+               (item_id, lot_number, expiry_date, quantity, received_date)
+           VALUES (?, ?, ?, ?, date('now'))""",
+        (item_id, label, expiry, quantity),
+    )
+    return cur.lastrowid
 
 
 def _current_uid(conn, user):
@@ -1320,6 +1353,16 @@ def consume_item(
                 (take, lot["id"], take),
             )
             remaining -= take
+        if remaining > 0:
+            # On-hand covered the consume (the guarded UPDATE above succeeded)
+            # but the lots did not, so this item carries stock no lot accounts
+            # for. Legitimate for legacy rows created before opening lots
+            # existed; never silent, because it is also how real drift shows up.
+            log.warning(
+                "item %s: consumed %s but lots only covered %s -- %s unit(s) had "
+                "no lot behind them (see GET /api/integrity/stock)",
+                item_id, body.quantity, body.quantity - remaining, remaining,
+            )
         conn.execute(
             """INSERT INTO usage_event
                    (item_id, container_id, staff_id, event_type, quantity, occurred_at, note)
@@ -1410,6 +1453,91 @@ def restock_item(
             "item_id": item_id,
             "lot_id": lot_id,
             "quantity_on_hand": new_on_hand,
+        }
+    finally:
+        conn.close()
+
+
+class LotPatchBody(BaseModel):
+    lot_number: Optional[str] = None
+    expiry_date: Optional[str] = None
+    coa_url: Optional[str] = None
+
+
+@router.patch("/lots/{lot_id}", dependencies=[Depends(auth.require_role("member"))])
+def patch_lot(lot_id: int, body: LotPatchBody,
+              user: dict = Depends(auth.require_role("member"))):
+    """Edit a lot's identity: lot number, expiry, CoA link.
+
+    Lots could previously only be born from a restock, so stock that arrived any
+    other way -- an opening balance, a CSV import -- had no way to ever gain an
+    expiry date, and expiry alerts (which read item_lot) could never see it.
+    This is the endpoint that makes imported stock trackable.
+    """
+    fields = body.model_dump(exclude_unset=True)
+    if not fields:
+        raise HTTPException(status_code=400, detail="no fields to update")
+    expiry = fields.get("expiry_date")
+    if expiry:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(expiry)):
+            raise HTTPException(
+                status_code=400, detail="expiry_date must be YYYY-MM-DD"
+            )
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT id, item_id FROM item_lot WHERE id = ?", (lot_id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="lot not found")
+        cols = [c for c in ("lot_number", "expiry_date", "coa_url") if c in fields]
+        set_clause = ", ".join(f"{c} = ?" for c in cols)
+        conn.execute(
+            f"UPDATE item_lot SET {set_clause} WHERE id = ?",
+            [fields[c] for c in cols] + [lot_id],
+        )
+        _audit(conn, user, "lot.update", "item_lot", lot_id,
+               ", ".join(f"{c}={fields[c]}" for c in cols))
+        conn.commit()
+        return dict(
+            conn.execute("SELECT * FROM item_lot WHERE id = ?", (lot_id,)).fetchone()
+        )
+    finally:
+        conn.close()
+
+
+@router.get("/integrity/stock", dependencies=[Depends(auth.require_role("manager"))])
+def stock_integrity():
+    """Items whose lot quantities do not add up to their recorded stock.
+
+    The app keeps quantity_on_hand and the per-lot quantities as separate
+    numbers. They should agree; when they do not, expiry alerts and the stock
+    figure are telling different stories, so surface it rather than let it rot:
+
+      untracked > 0  -- stock with no lot behind it, invisible to expiry alerts
+      over_lotted    -- lots claim more than the item holds (a real error)
+    """
+    conn = get_conn()
+    try:
+        rows = _rows(conn.execute(
+            """SELECT i.item_id, i.item_name, i.unit, i.quantity_on_hand,
+                      COALESCE(SUM(l.quantity), 0) AS lot_total
+                 FROM inventory i
+                 LEFT JOIN item_lot l ON l.item_id = i.item_id
+                WHERE i.status = 'active'
+                GROUP BY i.item_id
+               HAVING COALESCE(SUM(l.quantity), 0) <> i.quantity_on_hand
+                ORDER BY i.item_name COLLATE NOCASE"""
+        ))
+        for r in rows:
+            diff = r["quantity_on_hand"] - r["lot_total"]
+            r["untracked"] = max(diff, 0)
+            r["over_lotted"] = max(-diff, 0)
+        return {
+            "count": len(rows),
+            "untracked_items": sum(1 for r in rows if r["untracked"]),
+            "over_lotted_items": sum(1 for r in rows if r["over_lotted"]),
+            "items": rows,
         }
     finally:
         conn.close()
@@ -2123,6 +2251,7 @@ def create_item(body: ItemCreateBody, user: dict = Depends(auth.require_role("ma
                    VALUES (?, NULL, NULL, 'restock', ?, datetime('now'), 'opening balance')""",
                 (item_id, body.quantity_on_hand),
             )
+            _open_lot(conn, item_id, body.quantity_on_hand)
         _audit(conn, user, "item.create", "inventory", item_id, name)
         conn.commit()
         return dict(
@@ -2309,6 +2438,7 @@ async def import_inventory(
                                    'imported opening balance')""",
                         (cur.lastrowid, qty),
                     )
+                    _open_lot(conn, cur.lastrowid, qty, expiry=row.get("expiry_date") or None)
                 created += 1
 
         if is_dry:
