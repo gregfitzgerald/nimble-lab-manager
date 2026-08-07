@@ -163,7 +163,11 @@ CREATE TABLE container (   -- a physical vial/tube/bottle occupying ONE grid pos
     expected_box_id  INTEGER NULL REFERENCES location_node(id),
     expected_row     INTEGER NULL,                                    -- where it SHOULD be
     expected_col     INTEGER NULL,
-    status           TEXT    NOT NULL DEFAULT 'in_use'   -- in_use | empty | discarded
+    -- in_use | empty | discarded | missing
+    -- 'missing' is set when a stocktake closes without finding the container.
+    -- Every "is it physically here" query filters status = 'in_use', so a
+    -- missing container drops out of the map, contents lists and dashboards.
+    status           TEXT    NOT NULL DEFAULT 'in_use'
 );
 
 CREATE TABLE usage_event (   -- OUTFLOW / activity log (drives analytics AND the game)

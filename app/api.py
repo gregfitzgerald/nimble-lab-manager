@@ -5900,13 +5900,27 @@ def close_count(session_id: int, user: dict = Depends(auth.require_role("member"
                WHERE session_id = ? AND status = 'pending'""",
             (session_id,),
         )
+        # Act on that finding: a container the count proved absent must stop
+        # reading as physically present. Every "is it here" query filters
+        # status = 'in_use', so flagging it 'missing' removes it from the map,
+        # item container lists, dashboard counts and misplacement checks.
+        # Reversible: a manager can PATCH the container back if it turns up.
+        applied = conn.execute(
+            """UPDATE container SET status = 'missing'
+                WHERE status = 'in_use' AND id IN (
+                    SELECT container_id FROM count_line
+                     WHERE session_id = ? AND status = 'missing'
+                       AND container_id IS NOT NULL)""",
+            (session_id,),
+        ).rowcount
         conn.execute(
             "UPDATE count_session SET status = 'closed', closed_at = datetime('now') WHERE id = ?",
             (session_id,),
         )
         summary = _count_summary(conn, session_id)
         _audit(conn, user, "count.close", "count_session", session_id,
-               f"accuracy {summary['accuracy']:.0%}, {summary['missing']} missing")
+               f"accuracy {summary['accuracy']:.0%}, {summary['missing']} missing"
+               + (f", {applied} container(s) flagged missing" if applied else ""))
         if summary["missing"] > 0:
             conn.execute(
                 """INSERT INTO notification
