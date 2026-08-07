@@ -747,8 +747,36 @@ export async function render(root, ctx, params) {
     if (canEdit) {
       items.push({ divider: true });
       items.push({ label: "Edit", onClick: () => showDetail(it.item_id) });
+      if (it.status === "deprecated") {
+        items.push({ label: "Restore", onClick: () => setItemStatus(it, "active") });
+      } else {
+        items.push({ label: "Deprecate (archive)", onClick: () => setItemStatus(it, "deprecated") });
+      }
     }
     ctx.contextMenu(e.clientX, e.clientY, items, it.item_name);
+  }
+
+  // Soft-archive / restore an item. Deprecating hides it from active pick-lists
+  // while preserving all its history (lots, usage, orders); it is fully
+  // reversible via Restore (surface deprecated rows with the "Show deprecated"
+  // toggle). Backed by PATCH /api/items/{id} { status }.
+  async function setItemStatus(it, status) {
+    try {
+      await ctx.api.patch("/api/items/" + it.item_id, { status });
+      ctx.toast(
+        status === "deprecated"
+          ? it.item_name + " deprecated (archived)"
+          : it.item_name + " restored",
+        "ok",
+      );
+      await loadItems();
+      drawTable();
+    } catch (err) {
+      ctx.toast(
+        "Could not update: " + (err && err.message ? err.message : err),
+        "danger",
+      );
+    }
   }
 
   // Order / reorder: append a line to the caller's draft PO (member+). Default

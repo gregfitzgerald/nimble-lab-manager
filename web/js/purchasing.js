@@ -208,6 +208,84 @@ export async function render(root, ctx, params) {
       }
     });
     toolbar.appendChild(autoBtn);
+
+    // Review what would be ordered (and why) before drafting. Surfaces
+    // GET /api/reorder/suggestions, which resolves each low item to its
+    // preferred in-stock vendor and a suggested top-up quantity.
+    const suggestBtn = el("button", "btn btn-ghost btn-sm", "Review reorder suggestions");
+    suggestBtn.addEventListener("click", async () => {
+      suggestBtn.disabled = true;
+      try {
+        const rows = await ctx.api.get("/api/reorder/suggestions");
+        showSuggestions(rows || []);
+      } catch (err) {
+        ctx.toast("Could not load suggestions: "
+          + (err && err.message ? err.message : err), "danger");
+      } finally {
+        suggestBtn.disabled = false;
+      }
+    });
+    toolbar.appendChild(suggestBtn);
+
+    // Read-only review of what auto-draft would order: every active item at or
+    // below its reorder point, the vendor the engine picked (preferred
+    // substitute when the usual one is unavailable), and the top-up quantity.
+    function showSuggestions(rows) {
+      ctx.modal({
+        title: "Reorder suggestions",
+        render: (body) => {
+          if (!rows.length) {
+            body.appendChild(el("p", "muted",
+              "Nothing is at or below its reorder point."));
+            return;
+          }
+          const intro = el("p", "muted",
+            rows.length + " item" + (rows.length === 1 ? "" : "s")
+            + " at or below the reorder point. \"Auto-draft from low stock\" "
+            + "creates a draft purchase order from this list.");
+          body.appendChild(intro);
+          const table = el("table", "table");
+          const thead = el("thead");
+          const hr = el("tr");
+          ["Item", "On hand", "Reorder at", "Suggested", "Vendor", "Est. cost"]
+            .forEach((h) => hr.appendChild(el("th", null, h)));
+          thead.appendChild(hr);
+          table.appendChild(thead);
+          const tb = el("tbody");
+          let total = 0;
+          for (const r of rows) {
+            const tr = el("tr");
+            tr.appendChild(el("td", null, r.item_name));
+            tr.appendChild(el("td", null, String(r.quantity_on_hand)));
+            tr.appendChild(el("td", null, String(r.reorder_threshold)));
+            tr.appendChild(el("td", null, String(r.suggested_qty)));
+            const vend = el("td", null, r.vendor || "--");
+            if (r.preferred_vendor && r.preferred_vendor !== r.vendor) {
+              vend.appendChild(el("span", "badge badge-warn", "substitute"));
+            }
+            tr.appendChild(vend);
+            const cost = (r.unit_cost || 0) * (r.suggested_qty || 0);
+            total += cost;
+            tr.appendChild(el("td", null, ctx.fmt.money(cost)));
+            tb.appendChild(tr);
+          }
+          table.appendChild(tb);
+          body.appendChild(table);
+          const totalLine = el("p", null, "Estimated total: " + ctx.fmt.money(total));
+          totalLine.style.fontWeight = "600";
+          body.appendChild(totalLine);
+        },
+        actions: [
+          { label: "Close", onClick: (h) => h.close() },
+          {
+            label: "Draft purchase order",
+            primary: true,
+            onClick: (h) => { h.close(); autoBtn.click(); },
+          },
+        ],
+      });
+    }
+
     const searchInput = document.createElement("input");
     searchInput.className = "chip";
     searchInput.placeholder = "Search orders...";
