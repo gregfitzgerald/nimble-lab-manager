@@ -218,7 +218,16 @@ bell and global search in the top bar.
 - **People** (admin-only) -- create/deactivate users, assign roles, reset
   passwords.
 - **History** (manager+) -- the append-only audit trail.
-- **Reports** -- summary counts plus role-gated CSV exports.
+- **Reports** -- summary counts, role-gated CSV exports, and CSV import with a
+  dry-run preview and per-row errors. Imported rows match existing items by
+  catalog number, then item id, then name, so re-importing an edited vendor
+  sheet updates the right product instead of silently duplicating it or merging
+  two reagents that share a name.
+- **Stocktake** -- cycle counts that end in an actionable state: closing a
+  session flags containers the count could not find (so they stop reading as
+  present everywhere else) and lists the affected items for reconciliation.
+  Quantities are never adjusted automatically, because a container is not
+  necessarily one stock unit.
 - **Tutorial** ("Lab Tycoon") -- an interactive, hands-on tutorial: the
   supply-chain sim that teaches the app by writing through the real API.
 

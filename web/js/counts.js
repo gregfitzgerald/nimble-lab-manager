@@ -222,6 +222,71 @@ export async function render(root, ctx, params) {
     headCard.appendChild(summary);
     container.appendChild(headCard);
 
+    // Reconciliation panel: what the count could not find, per item. Stock is
+    // never adjusted automatically -- containers are not necessarily one unit
+    // each -- so each row offers an explicit "set actual quantity".
+    const discrepancies = data.discrepancies || [];
+    if (!isOpen && discrepancies.length) {
+      const recCard = el("div", "card");
+      recCard.style.marginTop = "16px";
+      recCard.appendChild(el("div", "card-title", "Reconcile"));
+      recCard.appendChild(el("p", "muted",
+        "These items had containers the count could not find. Quantities were "
+        + "not changed automatically -- set the counted amount to bring the "
+        + "record in line."));
+      const scroll = el("div", "table-scroll");
+      const table = el("table", "table");
+      const thead = el("thead");
+      const hr = el("tr");
+      ["Item", "Recorded", "Missing containers", ""].forEach(
+        (h) => hr.appendChild(el("th", null, h)));
+      thead.appendChild(hr);
+      table.appendChild(thead);
+      const tb = el("tbody");
+      for (const d of discrepancies) {
+        const tr = el("tr");
+        tr.appendChild(el("td", null, d.item_name));
+        tr.appendChild(el("td", null,
+          d.quantity_on_hand + " " + (d.unit || "")));
+        tr.appendChild(el("td", null, String(d.missing_containers)));
+        const actionTd = el("td");
+        const btn = el("button", "btn btn-sm", "Set actual quantity");
+        btn.addEventListener("click", async () => {
+          const raw = window.prompt(
+            "Counted quantity for " + d.item_name
+            + " (record says " + d.quantity_on_hand + "):",
+            String(d.quantity_on_hand),
+          );
+          if (raw == null) return;
+          const qty = parseInt(raw, 10);
+          if (!Number.isFinite(qty) || qty < 0) {
+            ctx.toast("Enter a quantity of zero or more", "warn");
+            return;
+          }
+          btn.disabled = true;
+          try {
+            const res = await ctx.api.post(
+              "/api/items/" + d.item_id + "/set-quantity",
+              { quantity: qty, reason: "stocktake #" + sessionId },
+            );
+            ctx.toast(d.item_name + " set to " + res.quantity_on_hand, "ok");
+            await showDetail(sessionId);
+          } catch (err) {
+            ctx.toast("Could not set quantity: "
+              + (err && err.message ? err.message : err), "danger");
+            btn.disabled = false;
+          }
+        });
+        actionTd.appendChild(btn);
+        tr.appendChild(actionTd);
+        tb.appendChild(tr);
+      }
+      table.appendChild(tb);
+      scroll.appendChild(table);
+      recCard.appendChild(scroll);
+      container.appendChild(recCard);
+    }
+
     // scan box (open sessions only)
     if (isOpen) {
       const scanCard = el("div", "card");

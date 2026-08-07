@@ -82,3 +82,17 @@ def test_missing_container_drops_out_of_present_counts(member, db):
     shown = member.get(f"/api/items/{item_id}").json()["containers"]
     row = next(c for c in shown if c["id"] == cid)
     assert row["status"] == "missing"
+
+
+def test_close_reports_per_item_discrepancies(member, db):
+    """Quantities are never auto-adjusted; the count reports what to reconcile."""
+    session = _open_session(member, db)
+    sid = session["id"]
+    detail = member.post(f"/api/counts/{sid}/close").json()
+    disc = detail["discrepancies"]
+    assert disc, "closing with unfound containers should report discrepancies"
+    first = disc[0]
+    # Enough context for a one-click "set actual quantity" without guessing math.
+    for key in ("item_id", "item_name", "quantity_on_hand", "missing_containers"):
+        assert key in first
+    assert first["missing_containers"] >= 1

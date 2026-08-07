@@ -2144,6 +2144,44 @@ _IMPORT_TEXT_COLS = (
 )
 
 
+def _import_match(conn, row, name):
+    """Resolve a CSV row to an existing item, most-specific key first.
+
+    catalog_number -> item_id -> item_name. Matching on the product name alone
+    is unreliable for a real lab: two distinct reagents can share a name, and a
+    re-imported vendor sheet then either duplicates rows or merges the wrong
+    ones. A catalog number identifies the actual product, and item_id (which the
+    export emits) is exact, so both are preferred when the sheet carries them.
+    """
+    catalog_number = row.get("catalog_number", "")
+    if catalog_number:
+        hit = conn.execute(
+            """SELECT i.item_id FROM inventory i
+                 JOIN vendor_catalog vc ON vc.id = i.catalog_id
+                WHERE lower(vc.catalog_number) = lower(?)
+                ORDER BY i.item_id LIMIT 1""",
+            (catalog_number,),
+        ).fetchone()
+        if hit is not None:
+            return hit
+
+    raw_id = row.get("item_id", "")
+    if raw_id:
+        try:
+            hit = conn.execute(
+                "SELECT item_id FROM inventory WHERE item_id = ?", (int(float(raw_id)),)
+            ).fetchone()
+        except (TypeError, ValueError):
+            hit = None
+        if hit is not None:
+            return hit
+
+    return conn.execute(
+        "SELECT item_id FROM inventory WHERE lower(item_name) = lower(?) LIMIT 1",
+        (name,),
+    ).fetchone()
+
+
 @router.post(
     "/import/inventory",
     dependencies=[Depends(auth.require_role("manager"))],
@@ -2155,9 +2193,10 @@ async def import_inventory(
 ):
     """Bulk create/update inventory from a CSV (mirrors the export columns).
 
-    Rows are matched to existing items by item_name (case-insensitive): a match
-    updates the provided columns, otherwise a new active item is inserted. Bad
-    rows are collected as per-row errors and skipped (the import is NOT aborted).
+    Rows are matched to existing items by catalog_number, then item_id, then
+    item_name (all case-insensitive) -- see _import_match: a match updates the
+    provided columns, otherwise a new active item is inserted. Bad rows are
+    collected as per-row errors and skipped (the import is NOT aborted).
     dry_run computes the same summary but rolls back with no writes.
     """
     is_dry = str(dry_run).strip().lower() in ("true", "1", "yes", "on")
@@ -2231,10 +2270,7 @@ async def import_inventory(
                 if row.get(col, "") != "":
                     provided[col] = row[col]
 
-            existing = conn.execute(
-                "SELECT item_id FROM inventory WHERE lower(item_name) = lower(?) LIMIT 1",
-                (name,),
-            ).fetchone()
+            existing = _import_match(conn, row, name)
 
             if existing is not None:
                 if provided:
@@ -5603,7 +5639,32 @@ def _count_detail(conn, session_id):
     d["location_name"] = _location_path(conn, d["location_id"]) if d["location_id"] else None
     d["lines"] = _count_lines(conn, session_id)
     d["summary"] = _count_summary(conn, session_id)
+    d["discrepancies"] = _count_discrepancies(conn, session_id)
     return d
+
+
+def _count_discrepancies(conn, session_id):
+    """Per-item summary of what the count could not find, for reconciliation.
+
+    Containers are not necessarily one stock unit each, so this reports the
+    facts -- how many containers are unaccounted for against the recorded
+    on-hand -- and leaves the correction to an explicit per-item
+    'set actual quantity', rather than inferring unit math.
+    """
+    return _rows(conn.execute(
+        """SELECT cl.item_id,
+                  i.item_name,
+                  i.unit,
+                  i.quantity_on_hand,
+                  COUNT(*) AS missing_containers
+             FROM count_line cl
+             JOIN inventory i ON i.item_id = cl.item_id
+            WHERE cl.session_id = ? AND cl.status = 'missing'
+              AND cl.item_id IS NOT NULL
+            GROUP BY cl.item_id, i.item_name, i.unit, i.quantity_on_hand
+            ORDER BY i.item_name""",
+        (session_id,),
+    ))
 
 
 @router.post("/counts", dependencies=[Depends(auth.require_role("member"))])
@@ -6777,21 +6838,24 @@ def export_inventory_csv(user: dict = Depends(auth.require_role("member"))):
             """SELECT i.item_id, i.item_name, i.category, i.vendor, i.unit,
                       i.quantity_on_hand, i.reorder_threshold, i.reorder_max,
                       i.unit_cost, i.status, i.is_controlled, i.hazard_class,
-                      i.cas_number,
+                      i.cas_number, vc.catalog_number,
                       MIN(CASE WHEN l.expiry_date IS NOT NULL AND l.quantity > 0
                                THEN l.expiry_date END) AS nearest_expiry
                FROM inventory i
                LEFT JOIN item_lot l ON l.item_id = i.item_id
+               LEFT JOIN vendor_catalog vc ON vc.id = i.catalog_id
                GROUP BY i.item_id
                ORDER BY i.item_name COLLATE NOCASE""",
         ).fetchall()
         _audit(conn, user, "export", "export", None, "inventory")
         conn.commit()
+        # catalog_number is exported so an edited sheet re-imports against a
+        # stable key instead of matching on the (ambiguous) product name.
         header = [
-            "item_id", "item_name", "category", "vendor", "unit",
-            "quantity_on_hand", "reorder_threshold", "reorder_max", "unit_cost",
-            "status", "is_controlled", "hazard_class", "cas_number",
-            "nearest_expiry",
+            "item_id", "item_name", "catalog_number", "category", "vendor",
+            "unit", "quantity_on_hand", "reorder_threshold", "reorder_max",
+            "unit_cost", "status", "is_controlled", "hazard_class",
+            "cas_number", "nearest_expiry",
         ]
         return _csv_response(
             "inventory.csv", header, ([r[c] for c in header] for r in rows)
