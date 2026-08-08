@@ -371,3 +371,31 @@ def test_oversized_json_body_is_refused(member):
 def test_normal_json_body_still_accepted(member):
     r = member.post("/api/items/1/consume", json={"quantity": 1, "note": "fine"})
     assert r.status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# non-finite fund amount must be rejected (Infinity bricked all fund reads)
+# --------------------------------------------------------------------------- #
+def test_infinity_fund_charge_is_rejected(manager, db):
+    """json.loads accepts the Infinity token; persisting it made every fund read
+    500, because inf is not JSON-serialisable. It must be refused up front."""
+    fid = db.execute("SELECT id FROM fund LIMIT 1").fetchone()[0]
+    # Send the raw non-standard Infinity token, which json.loads (and thus
+    # Starlette) accepts -- a normal json= body would be rejected client-side.
+    r = manager.post(
+        f"/api/funds/{fid}/charges",
+        content=b'{"amount": Infinity, "description": "attack"}',
+        headers={"Content-Type": "application/json"},
+    )
+    assert r.status_code == 400
+    # and the funds subsystem still reads fine
+    assert manager.get(f"/api/funds/{fid}").status_code == 200
+    assert manager.get("/api/funds").status_code == 200
+    assert manager.get("/api/funds/spend-by-person").status_code == 200
+
+
+def test_finite_fund_charge_still_works(manager, db):
+    fid = db.execute("SELECT id FROM fund LIMIT 1").fetchone()[0]
+    r = manager.post(f"/api/funds/{fid}/charges",
+                     json={"amount": 42.50, "description": "reagents"})
+    assert r.status_code == 200, r.text

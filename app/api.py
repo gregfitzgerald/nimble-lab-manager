@@ -13,6 +13,7 @@ import datetime as _dt
 import io
 import json
 import logging
+import math
 import os
 import re
 import secrets as _secrets
@@ -2585,6 +2586,9 @@ async def import_inventory(
                             provided[col] = float(row[col])
                         except (TypeError, ValueError):
                             bad = f"{col} must be a number"
+                            break
+                        if not math.isfinite(provided[col]):
+                            bad = f"{col} must be a finite number"
                             break
                         if provided[col] < 0:
                             bad = f"{col} cannot be negative"
@@ -7276,6 +7280,12 @@ def add_fund_charge(fid: int, payload: dict = Body(...),
             amount = float(amount)
         except (TypeError, ValueError):
             raise HTTPException(status_code=400, detail="amount must be a number")
+        # Reject Infinity/NaN. Python's json.loads accepts the non-standard
+        # Infinity token, so this would otherwise persist a non-finite amount that
+        # then makes every fund read 500 (inf is not JSON-serialisable) -- one
+        # request bricks the whole funds subsystem until the row is deleted.
+        if not math.isfinite(amount):
+            raise HTTPException(status_code=400, detail="amount must be a finite number")
 
         conn.execute(
             """INSERT INTO fund_charge
@@ -8004,6 +8014,10 @@ def checkout_glassware(gid: int, body: GlasswareCheckoutBody,
                        user: dict = Depends(auth.require_role("member"))):
     conn = get_conn()
     try:
+        # Hold the write lock across the availability check AND the state change:
+        # without it, concurrent checkouts each read 'available' and all insert an
+        # open checkout row, so one physical item shows as held by several people.
+        conn.execute("BEGIN IMMEDIATE")
         item = conn.execute(
             "SELECT id, status FROM glassware_item WHERE id = ?", (gid,)
         ).fetchone()
@@ -8037,6 +8051,9 @@ def checkout_glassware(gid: int, body: GlasswareCheckoutBody,
 def return_glassware(gid: int, user: dict = Depends(auth.require_role("member"))):
     conn = get_conn()
     try:
+        # Same guard as checkout: serialise the check-and-clear so two concurrent
+        # returns cannot both settle the same open checkout row.
+        conn.execute("BEGIN IMMEDIATE")
         item = conn.execute(
             "SELECT id, status FROM glassware_item WHERE id = ?", (gid,)
         ).fetchone()

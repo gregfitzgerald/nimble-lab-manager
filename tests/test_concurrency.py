@@ -298,3 +298,43 @@ def test_concurrent_bookings_never_double_book(live_server):
         f"\n[booking race] N={N} simultaneous: {ok} x 200, {booked} row(s) booked, "
         f"no double-book"
     )
+
+
+# --- Scenario 4: parallel glassware checkout race --------------------------- #
+# Same TOCTOU class as bookings: check 'available' then set 'checked_out' with no
+# guard let many requests all open a checkout for one physical item.
+
+def _available_glassware_id(base):
+    status, body = _request("GET", f"{base}/api/glassware")
+    assert status == 200, f"GET glassware -> {status}"
+    rows = body if isinstance(body, list) else body.get("glassware", [])
+    for r in rows:
+        if r.get("status") == "available":
+            return r["id"]
+    raise AssertionError("no available glassware in seed")
+
+
+def test_concurrent_checkout_never_double_holds(live_server):
+    base = live_server
+    gid = _available_glassware_id(base)
+    N = 16
+
+    def checkout():
+        status, _ = _request("POST", f"{base}/api/glassware/{gid}/checkout", {})
+        return status
+
+    codes = _fire_concurrent(checkout, N)
+    ok = sum(c == 200 for c in codes)
+    server_errors = [c for c in codes if 500 <= c < 600 and c != 503]
+
+    status, detail = _request("GET", f"{base}/api/glassware/{gid}")
+    assert status == 200
+    open_rows = sum(
+        1 for co in detail.get("checkouts", detail.get("history", []))
+        if co.get("returned_at") is None
+    )
+
+    assert not server_errors, f"unexpected 5xx: {server_errors}"
+    assert ok == 1, f"expected one checkout to win, got {ok} (codes={sorted(codes)})"
+    assert open_rows == 1, f"item held by {open_rows} people at once (double check-out)"
+    print(f"\n[glassware race] N={N}: {ok} x 200, {open_rows} open hold, no double-hold")
