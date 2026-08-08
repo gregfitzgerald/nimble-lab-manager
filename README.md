@@ -334,6 +334,25 @@ inventory" from it). The bulk rows reuse the real chemical identities, so the sa
 reagent shows up from several vendors at different pack sizes and prices -- like a
 real cross-vendor catalog. `make reset` restores the standard feature-demo seed.
 
+The bundled catalog uses real catalog numbers with **representative** prices. To
+load **genuinely-sourced** prices, [`import_catalog.py`](import_catalog.py)
+imports a vendor price CSV into the catalog:
+
+```bash
+python3 import_catalog.py prices.csv --vendor "Fisher Scientific"   # or:
+python3 import_catalog.py prices.csv --dry-run                      # preview, write nothing
+```
+
+Where to get a real, legal price CSV: **GSA Advantage** (<https://www.gsaadvantage.gov>)
+publishes each vendor's Authorized Federal Supply Schedule electronic catalog as
+a download -- Fisher's channel is contract `GS07F161BA` -- which are public,
+federally-negotiated prices. A **Fisher/Thermo PunchOut (cXML)** account exposes
+live contract prices you can export. The importer aliases common header spellings
+(`MFR PART NUMBER`, `ITEM DESCRIPTION`, `GSA PRICE`, ...); use `--map
+'HEADER=field'` for anything it doesn't recognise. Rows match on
+(vendor, catalog_number), so re-importing an updated sheet refreshes prices
+instead of duplicating.
+
 ## Testing and quality
 
 **438 automated tests** back the app, run with `pytest` against FastAPI's
@@ -415,6 +434,23 @@ admin is bootstrapped (see [Running a real lab](#running-a-real-lab-empty-start)
 set `NLM_SEED_DEMO=1` if you instead want the throwaway demo lab. A mounted
 volume (`nlm-data` / `nlm_data`, at `/data`) keeps `lab.db` across rebuilds. A
 single SQLite file means a single machine -- the right shape for this workload.
+
+### Durability (backup + migrations)
+
+A single `lab.db` on one volume is the whole business state, so two pieces guard
+it:
+
+- **Streaming backup (Litestream, opt-in).** Set `LITESTREAM_REPLICA_URL` (e.g.
+  `s3://your-bucket/nlm`) plus object-store credentials and the container
+  continuously streams the database to object storage; on a fresh volume the
+  entrypoint restores it automatically. Unset, the app runs exactly as before.
+  See `litestream.yml` and `docker-entrypoint.sh`. On Fly, also set
+  `min_machines_running = 1` (a stopped machine replicates nothing).
+- **Versioned migrations.** `schema.sql` builds a fresh database complete; an
+  existing one is upgraded by an ordered, `PRAGMA user_version`-gated migration
+  runner (`app/db.py`, `_MIGRATIONS`) applied on startup. To change the schema on
+  a live deployment, edit `schema.sql` *and* append a `(version, sql)` step --
+  never renumber a released step.
 
 ## Contributing and license
 

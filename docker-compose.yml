@@ -20,6 +20,11 @@ services:
       NLM_SEED_DEMO: ${NLM_SEED_DEMO:-}
       # Uncomment when serving over HTTPS (e.g. behind a TLS proxy):
       # NLM_SECURE_COOKIES: "1"
+      # Streaming backup (optional): set a replica URL + object-store creds to
+      # continuously back lab.db up with Litestream. Empty = disabled.
+      LITESTREAM_REPLICA_URL: ${LITESTREAM_REPLICA_URL:-}
+      LITESTREAM_ACCESS_KEY_ID: ${LITESTREAM_ACCESS_KEY_ID:-}
+      LITESTREAM_SECRET_ACCESS_KEY: ${LITESTREAM_SECRET_ACCESS_KEY:-}
       # Daily email alert digest (optional). Set NLM_SCHEDULER=1 and the SMTP +
       # recipient vars to email a summary of open alerts once a day; without
       # them the digest is still viewable in-app (Settings > Email alert digest).

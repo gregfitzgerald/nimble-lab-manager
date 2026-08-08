@@ -1,0 +1,25 @@
+# Litestream configuration -- continuous streaming backup of the SQLite database.
+#
+# The whole app is one lab.db file; without replication, losing the volume loses
+# the entire lab. Litestream streams the WAL to object storage so the database
+# can be restored to within seconds of the last write.
+#
+# This is OPT-IN: the container only starts Litestream when LITESTREAM_REPLICA_URL
+# is set (see docker-entrypoint.sh). With it unset, the app runs exactly as before.
+#
+# Environment variables (expanded below by Litestream):
+#   LITESTREAM_REPLICA_URL        e.g. s3://my-bucket/nlm  (or abs://, gcs://, file://)
+#   LITESTREAM_ACCESS_KEY_ID      object-store access key   (or AWS_ACCESS_KEY_ID)
+#   LITESTREAM_SECRET_ACCESS_KEY  object-store secret        (or AWS_SECRET_ACCESS_KEY)
+#
+# Restore on a fresh machine:
+#   litestream restore -config /app/litestream.yml /data/lab.db
+# (docker-entrypoint.sh does this automatically when the DB file is absent.)
+
+dbs:
+  - path: /data/lab.db
+    replicas:
+      - url: ${LITESTREAM_REPLICA_URL}
+        # Keep a day of point-in-time restore granularity; snapshot every 6h.
+        retention: 24h
+        snapshot-interval: 6h

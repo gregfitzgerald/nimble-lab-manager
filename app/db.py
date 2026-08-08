@@ -4,6 +4,7 @@ The database is a single file (lab.db) built from schema.sql + seed.sql the firs
 time it is needed. Paths are derived from __file__ so the app stays portable.
 """
 
+import logging
 import os
 import sqlite3
 
@@ -14,6 +15,8 @@ ROOT_DIR = os.path.dirname(APP_DIR)
 DB_PATH = os.path.join(ROOT_DIR, "lab.db")
 SCHEMA_PATH = os.path.join(ROOT_DIR, "schema.sql")
 SEED_PATH = os.path.join(ROOT_DIR, "seed.sql")
+
+log = logging.getLogger("nlm.db")
 
 
 def get_conn():
@@ -37,36 +40,55 @@ def _read(path):
         return fh.read()
 
 
-# Indexes added after the first release. schema.sql only runs on a brand-new
-# database, so an existing lab.db would never get them; these are IF NOT EXISTS
-# and cheap, so applying them on every startup is safe and keeps a long-lived
-# deployment as fast as a fresh one.
-_INDEX_MIGRATIONS = """
-CREATE INDEX IF NOT EXISTS idx_container_lot ON container(item_lot_id);
-"""
+# Versioned migrations for an EXISTING database. schema.sql builds a fresh DB
+# complete, so a new database is stamped at SCHEMA_VERSION and skips all of these;
+# an older lab.db (created before a given change) has a lower PRAGMA user_version,
+# so the runner applies every step above its version, in order, then stamps the
+# new version. Each step is IF-NOT-EXISTS / idempotent, so a partially-upgraded
+# DB (e.g. one that ran the previous ad-hoc index scripts) re-runs harmlessly.
+#
+# To add a schema change on a live deployment: add it to schema.sql (for fresh
+# DBs) AND append a (version, sql) step here (for existing ones). Never edit or
+# renumber a released step -- only append.
+_MIGRATIONS = [
+    (1, """
+        CREATE INDEX IF NOT EXISTS idx_container_lot ON container(item_lot_id);
+    """),
+    (2, """
+        -- Drop duplicate open broadcasts before the UNIQUE index can be built.
+        DELETE FROM notification
+         WHERE read_at IS NULL AND user_id IS NULL
+           AND id NOT IN (SELECT MIN(id) FROM notification
+                           WHERE read_at IS NULL AND user_id IS NULL
+                           GROUP BY kind, entity_type, entity_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_unique_open
+            ON notification(kind, entity_type, entity_id)
+            WHERE read_at IS NULL AND user_id IS NULL;
+    """),
+]
+SCHEMA_VERSION = _MIGRATIONS[-1][0] if _MIGRATIONS else 0
 
-# Applied separately: a UNIQUE index fails to build if the table already holds
-# duplicates, so clear them first (keeping the lowest id of each group).
-_DEDUPE_NOTIFICATIONS = """
-DELETE FROM notification
- WHERE read_at IS NULL AND user_id IS NULL
-   AND id NOT IN (SELECT MIN(id) FROM notification
-                   WHERE read_at IS NULL AND user_id IS NULL
-                   GROUP BY kind, entity_type, entity_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_unique_open
-    ON notification(kind, entity_type, entity_id)
-    WHERE read_at IS NULL AND user_id IS NULL;
-"""
 
+def _run_migrations(conn):
+    """Apply every migration newer than the DB's recorded user_version, in order.
 
-def _apply_index_migrations(conn):
-    """Bring an existing database up to date with later-added indexes."""
-    for script in (_INDEX_MIGRATIONS, _DEDUPE_NOTIFICATIONS):
+    A fresh database is stamped at SCHEMA_VERSION by init_db and so runs none of
+    these; only a pre-existing DB at a lower version is upgraded.
+    """
+    current = conn.execute("PRAGMA user_version").fetchone()[0]
+    for version, sql in _MIGRATIONS:
+        if version <= current:
+            continue
         try:
-            conn.executescript(script)
-        except sqlite3.DatabaseError:
-            # A database predating these tables simply has nothing to index yet.
-            pass
+            conn.executescript(sql)
+        except sqlite3.DatabaseError as exc:
+            # A DB predating the referenced tables has nothing to migrate yet;
+            # log it but keep going so a later applicable step still runs.
+            log.warning("migration %d skipped: %s", version, exc)
+        # PRAGMA user_version does not accept a bound parameter; version is an
+        # int literal from this module, never user input.
+        conn.execute(f"PRAGMA user_version = {int(version)}")
+    conn.commit()
 
 
 def init_db(force=False, seed_demo=None):
@@ -98,8 +120,11 @@ def init_db(force=False, seed_demo=None):
             conn.executescript(_read(SCHEMA_PATH))
             if seed_demo and os.path.exists(SEED_PATH):
                 conn.executescript(_read(SEED_PATH))
+            # schema.sql is already at the latest shape; stamp it so the
+            # migration steps (which only bring OLD DBs forward) are skipped.
+            conn.execute(f"PRAGMA user_version = {int(SCHEMA_VERSION)}")
         else:
-            _apply_index_migrations(conn)
+            _run_migrations(conn)
         if seed_demo:
             auth.ensure_demo_users(conn)
         else:
@@ -139,6 +164,8 @@ def rebuild_db(seed_demo=None):
         conn.executescript(_read(SCHEMA_PATH))
         if seed_demo and os.path.exists(SEED_PATH):
             conn.executescript(_read(SEED_PATH))
+        # Freshly rebuilt from schema.sql -> already at the latest shape.
+        conn.execute(f"PRAGMA user_version = {int(SCHEMA_VERSION)}")
         if seed_demo:
             auth.ensure_demo_users(conn)
         else:
