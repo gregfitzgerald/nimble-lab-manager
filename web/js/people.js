@@ -190,11 +190,10 @@ export async function render(root, ctx, params) {
 
       tr.appendChild(el("td", null)).appendChild(statusBadge(!!row.is_active));
 
-      const actionsTd = document.createElement("td");
-      actionsTd.style.display = "flex";
-      actionsTd.style.gap = "6px";
-      actionsTd.style.flexWrap = "wrap";
-      actionsTd.style.alignItems = "center";
+      // A <td> must stay a table cell -- flexing it drops it out of the table's
+      // column layout. The buttons go in a .row-actions wrapper instead.
+      const actionsCell = document.createElement("td");
+      const actionsTd = el("div", "row-actions");
 
       if (self) {
         actionsTd.appendChild(el("span", "muted", "(your account)"));
@@ -246,7 +245,8 @@ export async function render(root, ctx, params) {
         actionsTd.appendChild(delBtn);
       }
 
-      tr.appendChild(actionsTd);
+      actionsCell.appendChild(actionsTd);
+      tr.appendChild(actionsCell);
       tbody.appendChild(tr);
     }
 

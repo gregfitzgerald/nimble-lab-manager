@@ -312,9 +312,9 @@ export async function render(root, ctx, params) {
         tr.appendChild(expTd);
         tr.appendChild(el("td", "mono", b.amount != null ? String(b.amount) : "--"));
         tr.appendChild(el("td", null, b.status));
-        const actionsTd = document.createElement("td");
-        actionsTd.style.display = "flex";
-        actionsTd.style.gap = "6px";
+        // Keep the <td> a real cell; the buttons live in a .row-actions wrapper.
+        const actionsCell = document.createElement("td");
+        const actionsTd = el("div", "row-actions");
         if (b.status === "in_use") {
           const useBtn = el("button", "btn btn-ghost btn-sm", "Mark used");
           useBtn.addEventListener("click", () => patchBatchStatus(b.id, "used", useBtn));
@@ -322,7 +322,8 @@ export async function render(root, ctx, params) {
           discardBtn.addEventListener("click", () => patchBatchStatus(b.id, "discarded", discardBtn));
           actionsTd.append(useBtn, discardBtn);
         }
-        tr.appendChild(actionsTd);
+        actionsCell.appendChild(actionsTd);
+        tr.appendChild(actionsCell);
         tb.appendChild(tr);
       }
       t.appendChild(tb);

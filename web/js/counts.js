@@ -385,13 +385,15 @@ export async function render(root, ctx, params) {
         tr.appendChild(statusTd);
         if (isOpen) {
           const actionsTd = document.createElement("td");
-          actionsTd.style.display = "flex";
-          actionsTd.style.gap = "6px";
+          // .row-actions keeps the cell a cell; flexing the <td> itself breaks
+          // the table's column alignment.
+          const actionsWrap = el("div", "row-actions");
           const foundBtn = el("button", "btn btn-ghost btn-sm", "Found");
           foundBtn.addEventListener("click", () => setLineStatus(line.id, "found", foundBtn, missingBtn));
           const missingBtn = el("button", "btn btn-ghost btn-sm", "Missing");
           missingBtn.addEventListener("click", () => setLineStatus(line.id, "missing", foundBtn, missingBtn));
-          actionsTd.append(foundBtn, missingBtn);
+          actionsWrap.append(foundBtn, missingBtn);
+          actionsTd.appendChild(actionsWrap);
           tr.appendChild(actionsTd);
         }
         tbody.appendChild(tr);

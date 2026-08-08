@@ -321,10 +321,14 @@ a:visited { color: var(--visited); }
     top: 0; left: 0;
     z-index: 60;
     transform: translateX(-100%);
-    transition: transform 0.18s ease;
+    /* visibility is animated alongside the slide so the closed panel leaves the
+       tab order -- translated-off content is still focusable, which made a
+       phone user tab through invisible nav links before reaching the page. */
+    visibility: hidden;
+    transition: transform 0.18s ease, visibility 0.18s ease;
     box-shadow: none;
   }
-  .app-shell:not(.nav-collapsed) .sidebar { transform: none; }
+  .app-shell:not(.nav-collapsed) .sidebar { transform: none; visibility: visible; }
   .app-shell.nav-collapsed .sidebar { display: flex; }  /* stays in DOM, just off-canvas */
   .app-shell:not(.nav-collapsed) .nav-backdrop {
     display: block;
@@ -776,7 +780,8 @@ select.chip { cursor: pointer; }
 .right { text-align: right; }
 .spacer { flex: 1 1 auto; }
 .empty-state { padding: 24px; text-align: center; color: var(--text-muted); }
-.row-actions { display: flex; gap: 5px; justify-content: flex-end; }
+.row-actions { display: flex; gap: 5px; justify-content: flex-end;
+               flex-wrap: wrap; align-items: center; }
 .section-gap { margin-top: 18px; }
 
 /* status dots: small solid squares, color = alert semantics */

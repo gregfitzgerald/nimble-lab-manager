@@ -8,8 +8,8 @@ import contextlib
 import os
 import sqlite3
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import auth, scheduler
@@ -124,5 +124,24 @@ async def security_middleware(request: Request, call_next):
 # Serve the SPA. web/ is owned by the frontend agents; ensure it exists so the
 # mount does not fail on a fresh checkout, then serve index.html at /.
 WEB_DIR = os.path.join(ROOT_DIR, "web")
+UPLOADS_DIR = os.path.join(WEB_DIR, "uploads")
 os.makedirs(WEB_DIR, exist_ok=True)
+
+
+# Uploaded files (SDS documents, floor images, product photos) live under web/,
+# so the static mount below would hand them to anyone who knows the URL --
+# access control by secrecy. This explicit route is declared BEFORE the mount, so
+# it wins, and it requires a session. Traversal is blocked by resolving the path
+# and requiring it to stay inside the uploads directory.
+@app.get("/uploads/{path:path}")
+def serve_upload(path: str, user: dict = Depends(auth.current_user)):
+    root = os.path.realpath(UPLOADS_DIR)
+    target = os.path.realpath(os.path.join(root, path))
+    if target != root and not target.startswith(root + os.sep):
+        raise HTTPException(status_code=404, detail="not found")
+    if not os.path.isfile(target):
+        raise HTTPException(status_code=404, detail="not found")
+    return FileResponse(target)
+
+
 app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")

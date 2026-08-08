@@ -408,7 +408,11 @@ export async function render(root, ctx, params) {
 
   const wrap = el("div", "map-wrap");
   root.appendChild(wrap);
-  mo.observe(root, { childList: true });
+  // Observe the router's container, not this view's own node: the router tears
+  // views down with `container.innerHTML = ""`, which mutates the PARENT. Watching
+  // `root` meant the callback never fired, so the body-level tooltip node and the
+  // two document listeners below leaked on every visit to the map.
+  mo.observe(root.parentNode || document.body, { childList: true });
 
   // --- top bar: breadcrumb + floor selector + controls ---
   const bar = el("div", "map-bar");

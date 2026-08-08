@@ -33,7 +33,12 @@ export async function render(root, ctx, params) {
   const style = document.createElement("style");
   style.textContent = `
     @media print {
-      header.topbar, .toast-host, .labels-toolbar { display: none !important; }
+      header.topbar, .toast-host, .labels-toolbar,
+      .sidebar, .rail-toggle, .nav-backdrop, .hub-tabs,
+      .view-title, .view-sub { display: none !important; }
+      /* The shell is a sidebar+content grid on screen; printing the content
+         column alone would otherwise keep the empty 190px sidebar gutter. */
+      .app-shell { display: block !important; }
       .content { padding: 0 !important; }
       .label-grid { display: grid !important; gap: 8px !important; }
       .label-grid.compact { grid-template-columns: repeat(3, 1fr) !important; }

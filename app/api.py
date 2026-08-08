@@ -31,7 +31,7 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import auth, notify, sqlconsole
 from . import db as _db
@@ -232,15 +232,42 @@ def _unlink_doc_file(filename):
 # auth (on auth_router: reachable without a session)
 # --------------------------------------------------------------------------- #
 class LoginBody(BaseModel):
-    username: str
-    password: str
+    # Bounded so an unauthenticated caller cannot post a huge string that is then
+    # hashed (PBKDF2 at 210k iterations is deliberately expensive).
+    username: str = Field(max_length=150)
+    password: str = Field(max_length=256)
 
 
-# In-process login throttle: {lowercased_username: [failure_timestamps]}.
-# Sliding window; >= _LOGIN_MAX_FAILURES within _LOGIN_WINDOW_SEC -> 429.
+# In-process login throttle. Keyed by BOTH the username and the client IP:
+# username alone let an attacker lock a known account out at will, and let them
+# spray many usernames with no limit at all -- while each miss still burned a
+# full PBKDF2 hash, making the endpoint a CPU amplifier. Sliding window;
+# >= _LOGIN_MAX_FAILURES within _LOGIN_WINDOW_SEC -> 429.
 _login_failures = {}
 _LOGIN_MAX_FAILURES = 8
 _LOGIN_WINDOW_SEC = 600
+_LOGIN_IP_MAX_FAILURES = 30      # across all usernames from one address
+_LOGIN_TRACK_LIMIT = 8192        # bound the dict so it cannot grow without limit
+
+
+def _login_prune(now):
+    """Drop entries whose whole window has expired (keeps the map bounded)."""
+    stale = [
+        k for k, times in _login_failures.items()
+        if not times or now - times[-1] >= _LOGIN_WINDOW_SEC
+    ]
+    for k in stale:
+        _login_failures.pop(k, None)
+    if len(_login_failures) > _LOGIN_TRACK_LIMIT:
+        # Pathological case: keep the most recent offenders, discard the rest.
+        for k in sorted(_login_failures, key=lambda k: _login_failures[k][-1])[
+            : len(_login_failures) - _LOGIN_TRACK_LIMIT
+        ]:
+            _login_failures.pop(k, None)
+
+
+def _login_recent(key, now):
+    return [t for t in _login_failures.get(key, []) if now - t < _LOGIN_WINDOW_SEC]
 
 
 _MIN_PASSWORD_LEN = 8
@@ -286,10 +313,18 @@ def login(body: LoginBody, request: Request, response: Response):
     import time
 
     key = body.username.strip().lower()
+    ip = (request.client.host if request.client else None) or "unknown"
+    ip_key = ("ip", ip)
     now = time.time()
-    recent = [t for t in _login_failures.get(key, []) if now - t < _LOGIN_WINDOW_SEC]
-    if len(recent) >= _LOGIN_MAX_FAILURES:
+    _login_prune(now)
+
+    recent = _login_recent(key, now)
+    ip_recent = _login_recent(ip_key, now)
+    # Refuse BEFORE hashing: the point is to stop the request burning a PBKDF2
+    # round, not merely to reject it afterwards.
+    if len(recent) >= _LOGIN_MAX_FAILURES or len(ip_recent) >= _LOGIN_IP_MAX_FAILURES:
         _login_failures[key] = recent
+        _login_failures[ip_key] = ip_recent
         raise HTTPException(
             status_code=429, detail="too many failed attempts; try again later"
         )
@@ -302,8 +337,13 @@ def login(body: LoginBody, request: Request, response: Response):
     if result is None:
         recent.append(now)
         _login_failures[key] = recent
+        # Count the miss against the source address too, so spraying many
+        # usernames from one host is limited even though each name is fresh.
+        ip_recent.append(now)
+        _login_failures[ip_key] = ip_recent
         raise HTTPException(status_code=401, detail="invalid credentials")
     _login_failures.pop(key, None)
+    _login_failures.pop(ip_key, None)
     token, user = result
     conn = get_conn()
     try:
@@ -1065,20 +1105,36 @@ def items(category: Optional[str] = None, include_deprecated: bool = False):
                 tuple(params),
             )
         )
+        # Primary storage location for every item in ONE pass. This used to be a
+        # query per row (fine on the demo seed, quadratic for a real lab), plus a
+        # recursive-CTE path lookup per row on top. Now: one grouped query, and
+        # each distinct box's path resolved once.
+        # In a min()/max() aggregate SQLite takes the bare columns from the
+        # matching row, so box_id is the one belonging to MIN(c.id) -- i.e. the
+        # same container the old "ORDER BY c.id LIMIT 1" picked.
+        box_by_item = {
+            row["item_id"]: row["box_id"]
+            for row in conn.execute(
+                """SELECT l2.item_id AS item_id, c.box_id AS box_id, MIN(c.id)
+                     FROM container c
+                     JOIN item_lot l2 ON l2.id = c.item_lot_id
+                    WHERE c.status = 'in_use'
+                    GROUP BY l2.item_id"""
+            )
+        }
+        path_cache = {}
+
+        def _cached_path(box_id):
+            if box_id not in path_cache:
+                path_cache[box_id] = _location_path(conn, box_id)
+            return path_cache[box_id]
+
         for r in rows:
             r["is_low_stock"] = r["quantity_on_hand"] <= r["reorder_threshold"]
             r["expiry_flag"] = _expiry_flag(r["nearest_expiry"], today)
             r["photo_url"] = _product_photo_url(r.get("photo_filename"))
-            # Primary storage location: the path of the item's first in-use
-            # container, if any (small N -> a per-row lookup is fine here).
-            box = conn.execute(
-                """SELECT c.box_id FROM container c
-                   JOIN item_lot l2 ON l2.id = c.item_lot_id
-                   WHERE l2.item_id = ? AND c.status = 'in_use'
-                   ORDER BY c.id LIMIT 1""",
-                (r["item_id"],),
-            ).fetchone()
-            r["location"] = _location_path(conn, box["box_id"]) if box else None
+            box_id = box_by_item.get(r["item_id"])
+            r["location"] = _cached_path(box_id) if box_id is not None else None
             # Unit-aware amount string, e.g. "6 x 500 mL" or "6 vial".
             qty = r["quantity_on_hand"]
             if r["size"]:
@@ -2364,6 +2420,7 @@ def create_item(body: ItemCreateBody, user: dict = Depends(auth.require_role("ma
 # CSV bulk import (mirrors the inventory.csv export columns)
 # --------------------------------------------------------------------------- #
 # Recognized columns; only item_name is required. Extra columns are ignored.
+_IMPORT_MAX_BYTES = 10 * 1024 * 1024  # ~10MB cap, matching the other uploads
 _IMPORT_INT_COLS = ("quantity_on_hand", "reorder_threshold", "reorder_max")
 _IMPORT_FLOAT_COLS = ("unit_cost",)
 _IMPORT_TEXT_COLS = (
@@ -2429,7 +2486,14 @@ async def import_inventory(
     """
     is_dry = str(dry_run).strip().lower() in ("true", "1", "yes", "on")
 
-    raw = await file.read()
+    # Cap the read like the other upload endpoints do, so a huge file cannot be
+    # pulled into memory whole.
+    raw = await file.read(_IMPORT_MAX_BYTES + 1)
+    if len(raw) > _IMPORT_MAX_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"file is too large (limit {_IMPORT_MAX_BYTES // (1024 * 1024)}MB)",
+        )
     try:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -2509,6 +2573,24 @@ async def import_inventory(
                         f"UPDATE inventory SET {set_clause} WHERE item_id = ?",
                         params,
                     )
+                    # A re-import that changes the stock figure must move the
+                    # lots with it, or the item ends up with stock no lot
+                    # accounts for -- invisible to expiry alerts and reported as
+                    # drift by /api/integrity/stock. Recorded as an adjustment,
+                    # not consumption, exactly as a counted correction is.
+                    if "quantity_on_hand" in provided:
+                        delta = _sync_lots_to_quantity(
+                            conn, existing["item_id"], provided["quantity_on_hand"],
+                        )
+                        if delta:
+                            conn.execute(
+                                """INSERT INTO usage_event
+                                       (item_id, container_id, staff_id, event_type,
+                                        quantity, occurred_at, note)
+                                   VALUES (?, NULL, NULL, 'adjust', ?, datetime('now'),
+                                           'CSV import')""",
+                                (existing["item_id"], delta),
+                            )
                 updated += 1
             else:
                 qty = provided.get("quantity_on_hand", 0)
@@ -3365,6 +3447,23 @@ def update_purchase_order(po_id: int, payload: dict = Body(...),
             raise HTTPException(status_code=404, detail="purchase order not found")
         current = po["status"]
 
+        # Fund / expected-arrival may ride along with a transition; apply them
+        # BEFORE the status branch. Receiving charges the PO's fund by re-reading
+        # purchase_order.fund_id, so writing the new fund afterwards meant a
+        # "receive + set fund" in one request stored the fund and charged nothing
+        # -- and the charge is idempotent, so it never caught up.
+        if has_fund:
+            if payload.get("fund_id") is not None and conn.execute(
+                "SELECT 1 FROM fund WHERE id = ?", (payload["fund_id"],)
+            ).fetchone() is None:
+                conn.rollback()
+                raise HTTPException(status_code=400, detail=f"unknown fund_id {payload['fund_id']}")
+            conn.execute("UPDATE purchase_order SET fund_id = ? WHERE id = ?",
+                         (payload.get("fund_id"), po_id))
+        if has_eta:
+            conn.execute("UPDATE purchase_order SET expected_arrival = ? WHERE id = ?",
+                         (payload.get("expected_arrival"), po_id))
+
         # Validate the transition. Cancel is allowed from any non-terminal state;
         # every other move must appear in the transition map for the current one.
         if new_status == "cancelled":
@@ -3457,19 +3556,6 @@ def update_purchase_order(po_id: int, payload: dict = Body(...),
             conn.execute(
                 "UPDATE purchase_order SET status = ? WHERE id = ?", (new_status, po_id)
             )
-        # Fund / expected-arrival may ride along with a transition; apply them too
-        # (manager+ is already enforced for every non-requisition transition).
-        if has_fund:
-            if payload.get("fund_id") is not None and conn.execute(
-                "SELECT 1 FROM fund WHERE id = ?", (payload["fund_id"],)
-            ).fetchone() is None:
-                conn.rollback()
-                raise HTTPException(status_code=400, detail=f"unknown fund_id {payload['fund_id']}")
-            conn.execute("UPDATE purchase_order SET fund_id = ? WHERE id = ?",
-                         (payload.get("fund_id"), po_id))
-        if has_eta:
-            conn.execute("UPDATE purchase_order SET expected_arrival = ? WHERE id = ?",
-                         (payload.get("expected_arrival"), po_id))
         if not auto_approved:  # the auto-approve path already audited "po.auto_approve"
             _audit(conn, user, "po.receive" if new_status == "received" else "po.update",
                    "purchase_order", po_id, f"-> {new_status}")
@@ -4263,6 +4349,23 @@ _NOTIFICATION_KINDS = (
     "other",
 )
 
+# The exact (kind, entity_type) pairs _sync_notifications regenerates from live
+# state, and therefore the only ones it may auto-clear. Matching on kind alone
+# swept up one-off alerts that share a kind but are not reconciled -- notably the
+# stocktake's ("other", "count_session") alert, which was marked read by the very
+# next notification poll and so could never be seen.
+_RECONCILED_PAIRS = frozenset({
+    ("low_stock", "inventory"),
+    ("expiring", "item_lot"),
+    ("expiring", "preparation_batch"),
+    ("expiring", "software_license"),
+    ("maintenance_due", "chore"),
+    ("maintenance_due", "equipment"),
+    ("approval_pending", "purchase_order"),
+    ("compatibility", "location_node"),
+    ("other", "glassware_item"),
+})
+
 
 def _sync_notifications(conn):
     """Reconcile broadcast operational alerts with live state, idempotently.
@@ -4413,6 +4516,10 @@ def _sync_notifications(conn):
               AND kind IN ({placeholders})""",
         _NOTIFICATION_KINDS,
     ):
+        # Only rows this function regenerates are eligible for auto-clearing;
+        # anything else (e.g. the stocktake's count_session alert) is left alone.
+        if (e["kind"], e["entity_type"]) not in _RECONCILED_PAIRS:
+            continue
         existing.setdefault((e["kind"], e["entity_type"], e["entity_id"]), []).append(e["id"])
 
     for key, info in desired.items():
@@ -4640,6 +4747,14 @@ def controlled_log_add(item_id: int, body: ControlledLogBody,
         if res.rowcount == 0:
             conn.rollback()
             raise HTTPException(status_code=400, detail="insufficient balance on the register")
+        # Keep the lot ledger in step with the register. Every other outflow
+        # draws lots down FEFO in the same transaction; without this the
+        # controlled register and item_lot diverge on every dispense, which then
+        # shows up as drift in GET /api/integrity/stock.
+        if body.change < 0:
+            _draw_down_lots(conn, item_id, -body.change)
+        else:
+            _open_lot(conn, item_id, body.change, label="controlled receipt")
         balance = conn.execute(
             "SELECT quantity_on_hand FROM inventory WHERE item_id = ?", (item_id,)
         ).fetchone()["quantity_on_hand"]
@@ -5571,10 +5686,20 @@ def receive_purchase_order(po_id: int, payload: dict = Body(...),
                                 detail=f"cannot receive a {po['status']} purchase order")
         total_received = 0
         for rec in receipts:
-            line_id = rec.get("line_id")
-            qty = rec.get("qty")
+            line_id = rec.get("line_id") if isinstance(rec, dict) else None
+            qty = rec.get("qty") if isinstance(rec, dict) else None
             if line_id is None or qty is None:
                 raise HTTPException(status_code=400, detail="each receipt needs line_id and qty")
+            # Coerce explicitly: a string/list/float qty otherwise reached the
+            # comparison below (TypeError -> 500) or was written straight into an
+            # INTEGER column as a float.
+            try:
+                line_id = int(line_id)
+                qty = int(qty)
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=400, detail="line_id and qty must be whole numbers"
+                ) from None
             line = conn.execute(
                 "SELECT id, item_id, quantity, received_qty FROM po_line WHERE id = ? AND po_id = ?",
                 (line_id, po_id),
@@ -6407,6 +6532,44 @@ def delete_kit(kit_id: int, user: dict = Depends(auth.require_role("manager"))):
         conn.close()
 
 
+def _sync_lots_to_quantity(conn, item_id, target, label="import adjustment"):
+    """Make SUM(item_lot.quantity) equal target for one item.
+
+    Trims lots first-expiry-first when they over-state the new figure, and opens
+    a lot for the shortfall when they under-state it, so a bulk write cannot
+    leave stock that no lot accounts for (which expiry alerts would never see).
+    Returns the signed change applied to the lot total.
+    """
+    lot_total = conn.execute(
+        "SELECT COALESCE(SUM(quantity), 0) AS t FROM item_lot WHERE item_id = ?",
+        (item_id,),
+    ).fetchone()["t"]
+    if target > lot_total:
+        _open_lot(conn, item_id, target - lot_total, label=label)
+    elif target < lot_total:
+        _draw_down_lots(conn, item_id, lot_total - target)
+    return target - lot_total
+
+
+def _canonical_dt(value):
+    """Normalize a client datetime to SQLite's 'YYYY-MM-DD HH:MM:SS' text form.
+
+    The browser's <input type="datetime-local"> posts 'YYYY-MM-DDTHH:MM' while
+    everything server-side writes a space separator. Both are valid to SQLite's
+    datetime(), but comparing them as raw TEXT is not: 'T' (0x54) sorts above
+    ' ' (0x20). Canonicalizing on write keeps stored values directly comparable.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    text = text.replace("T", " ")
+    if len(text) == 16:      # 'YYYY-MM-DD HH:MM' -> add seconds
+        text += ":00"
+    return text
+
+
 def _draw_down_lots(conn, item_id, quantity):
     """FIFO-by-expiry lot drawdown mirroring consume_item."""
     remaining = quantity
@@ -6683,8 +6846,8 @@ def delete_equipment(eid: int, user: dict = Depends(auth.require_role("manager")
              dependencies=[Depends(auth.require_role("member"))])
 def create_reservation(eid: int, payload: dict = Body(...),
                        user: dict = Depends(auth.require_role("member"))):
-    starts_at = payload.get("starts_at")
-    ends_at = payload.get("ends_at")
+    starts_at = _canonical_dt(payload.get("starts_at"))
+    ends_at = _canonical_dt(payload.get("ends_at"))
     if not starts_at or not ends_at:
         raise HTTPException(status_code=400, detail="starts_at and ends_at are required")
     if starts_at >= ends_at:
@@ -6693,9 +6856,15 @@ def create_reservation(eid: int, payload: dict = Body(...),
     try:
         if _equipment_row(conn, eid) is None:
             raise HTTPException(status_code=404, detail="equipment not found")
+        # Compare through datetime() rather than raw TEXT: rows written before
+        # inputs were canonicalized may still hold the browser's
+        # "YYYY-MM-DDTHH:MM" form, and 'T' sorts above ' ', which silently made
+        # the overlap test false and allowed double-booking.
         clash = conn.execute(
             """SELECT id FROM equipment_reservation
-               WHERE equipment_id = ? AND ? < ends_at AND ? > starts_at
+               WHERE equipment_id = ?
+                 AND datetime(?) < datetime(ends_at)
+                 AND datetime(?) > datetime(starts_at)
                LIMIT 1""",
             (eid, starts_at, ends_at),
         ).fetchone()
@@ -7042,6 +7211,11 @@ def _csv_cell(v):
     s = str(v)
     if any(ord(c) < 32 and c not in "\t\n\r" for c in s):
         s = "".join(c for c in s if ord(c) >= 32 or c in "\t\n\r")
+    # Neutralize spreadsheet formula injection: a member can type "=cmd|..." into
+    # an item note, and Excel/Sheets would execute it when the exported CSV is
+    # opened. Prefixing with an apostrophe makes the cell literal text.
+    if s[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        s = "'" + s
     return s
 
 

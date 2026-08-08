@@ -190,6 +190,9 @@ CREATE TABLE usage_event (   -- OUTFLOW / activity log (drives analytics AND the
 CREATE INDEX idx_usage_item        ON usage_event(item_id);
 CREATE INDEX idx_usage_occurred    ON usage_event(occurred_at);
 CREATE INDEX idx_container_box      ON container(box_id);
+-- container is joined to item_lot on item_lot_id whenever an item's physical
+-- location is resolved; without this that join full-scans container.
+CREATE INDEX idx_container_lot      ON container(item_lot_id);
 CREATE INDEX idx_item_lot_item      ON item_lot(item_id);
 CREATE INDEX idx_location_parent    ON location_node(parent_id);
 CREATE INDEX idx_location_floor     ON location_node(floor_id);

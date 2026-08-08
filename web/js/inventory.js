@@ -94,6 +94,14 @@ export async function render(root, ctx, params) {
   // Re-bound to openAddForm on every showList() render so the global "+ New"
   // shortcut always opens the current (attached) add-item form host.
   let openAddFormRef = null;
+  // showList() owns drawTable(); actions that live at render() scope (archive,
+  // set-quantity) need to refresh the table after a write, so showList publishes
+  // it here rather than those call sites reaching into a scope they cannot see.
+  let refreshTableRef = null;
+  function refreshTable() {
+    if (refreshTableRef) refreshTableRef();
+    else showList();
+  }
 
   const head = el("div");
   head.appendChild(el("h1", "view-title", "Inventory"));
@@ -302,6 +310,8 @@ export async function render(root, ctx, params) {
       const fresh = buildTablePlaceholder();
       table.replaceChild(fresh.querySelector("thead"), table.querySelector("thead"));
     }
+
+    refreshTableRef = drawTable;
 
     function drawTable() {
       const table = scroll.querySelector("table");
@@ -882,7 +892,7 @@ export async function render(root, ctx, params) {
                 );
               }
               await loadItems();
-              drawTable();
+              refreshTable();
             } catch (err) {
               ctx.toast("Could not set quantity: "
                 + (err && err.message ? err.message : err), "danger");
@@ -909,7 +919,7 @@ export async function render(root, ctx, params) {
         "ok",
       );
       await loadItems();
-      drawTable();
+      refreshTable();
     } catch (err) {
       ctx.toast(
         "Could not update: " + (err && err.message ? err.message : err),

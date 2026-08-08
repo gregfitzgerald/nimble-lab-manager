@@ -37,6 +37,24 @@ def _read(path):
         return fh.read()
 
 
+# Indexes added after the first release. schema.sql only runs on a brand-new
+# database, so an existing lab.db would never get them; these are IF NOT EXISTS
+# and cheap, so applying them on every startup is safe and keeps a long-lived
+# deployment as fast as a fresh one.
+_INDEX_MIGRATIONS = """
+CREATE INDEX IF NOT EXISTS idx_container_lot ON container(item_lot_id);
+"""
+
+
+def _apply_index_migrations(conn):
+    """Bring an existing database up to date with later-added indexes."""
+    try:
+        conn.executescript(_INDEX_MIGRATIONS)
+    except sqlite3.DatabaseError:
+        # A database predating these tables simply has nothing to index yet.
+        pass
+
+
 def init_db(force=False, seed_demo=None):
     """Build lab.db from schema.sql (+ optionally seed.sql) when it is missing.
 
@@ -66,6 +84,8 @@ def init_db(force=False, seed_demo=None):
             conn.executescript(_read(SCHEMA_PATH))
             if seed_demo and os.path.exists(SEED_PATH):
                 conn.executescript(_read(SEED_PATH))
+        else:
+            _apply_index_migrations(conn)
         if seed_demo:
             auth.ensure_demo_users(conn)
         else:
