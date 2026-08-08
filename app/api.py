@@ -6959,6 +6959,12 @@ def create_reservation(eid: int, payload: dict = Body(...),
         raise HTTPException(status_code=400, detail="starts_at must be before ends_at")
     conn = get_conn()
     try:
+        # Hold the write lock across the clash-check AND the insert. Without this
+        # the check is read-then-act: many simultaneous bookings each read "no
+        # clash" and all insert -- a barrier test produced 24 overlapping
+        # reservations from 24 concurrent requests. BEGIN IMMEDIATE serialises
+        # them so the second booker's check sees the first booker's row.
+        conn.execute("BEGIN IMMEDIATE")
         if _equipment_row(conn, eid) is None:
             raise HTTPException(status_code=404, detail="equipment not found")
         # Compare through datetime() rather than raw TEXT: rows written before

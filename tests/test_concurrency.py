@@ -250,3 +250,51 @@ def test_concurrent_tickets_never_oversell(live_server):
         f"\n[ticket race] S={S} q={q} N={N}: {ok} x 200 / {bad} x 400, "
         f"final on-hand={final}, no 5xx, never negative"
     )
+
+
+# --- Scenario 3: parallel equipment-booking race ---------------------------- #
+# The overlap check is a SELECT-then-INSERT. Without a transaction guard, many
+# simultaneous bookings each read "no clash" and all insert -- a barrier test
+# produced 24 overlapping reservations from 24 requests before this was fixed.
+
+def _first_equipment_id(base):
+    status, body = _request("GET", f"{base}/api/equipment")
+    assert status == 200, f"GET equipment -> {status}"
+    rows = body if isinstance(body, list) else body.get("equipment", [])
+    return rows[0]["id"]
+
+
+def test_concurrent_bookings_never_double_book(live_server):
+    base = live_server
+    eid = _first_equipment_id(base)
+    N = 24
+    slot = {"starts_at": "2027-05-01T09:00", "ends_at": "2027-05-01T17:00"}
+
+    def book():
+        status, _ = _request(
+            "POST", f"{base}/api/equipment/{eid}/reservations", dict(slot)
+        )
+        return status
+
+    codes = _fire_concurrent(book, N)
+    ok = sum(c == 200 for c in codes)
+    rejected = sum(c == 400 for c in codes)
+    server_errors = [c for c in codes if 500 <= c < 600 and c != 503]
+
+    # Exactly one of N overlapping bookings may win. The rest are rejected (400)
+    # or, under lock contention, bounced with 503 to retry -- never a 5xx bug,
+    # and never a second overlapping row.
+    # Reservations are nested under the equipment detail, not a standalone route.
+    status, detail = _request("GET", f"{base}/api/equipment/{eid}")
+    assert status == 200, f"GET equipment/{eid} -> {status}"
+    booked = len(detail.get("reservations", []))
+
+    assert not server_errors, f"unexpected 5xx under load: {server_errors}"
+    assert booked == 1, f"double-booked: {booked} overlapping reservations exist"
+    assert ok == 1, f"expected exactly one success, got {ok} (codes={sorted(codes)})"
+    assert rejected >= 1
+
+    print(
+        f"\n[booking race] N={N} simultaneous: {ok} x 200, {booked} row(s) booked, "
+        f"no double-book"
+    )

@@ -63,7 +63,7 @@ window.fetch = function (input, init) {
   return _nlmFetch(input, init);
 };
 
-async function request(path, method, body) {
+async function request(path, method, body, _attempt = 0) {
   const opts = { method, headers: {}, credentials: "same-origin" };
   if (body !== undefined) {
     opts.headers["Content-Type"] = "application/json";
@@ -71,6 +71,14 @@ async function request(path, method, body) {
   }
   // CSRF token is attached by the global fetch wrapper above.
   const res = await fetch(path, opts);
+  // 503 = SQLite write lock held past busy_timeout under contention. The server
+  // asks us to retry; a couple of short backoffs clear all but pathological
+  // load, and turn a scary error into a transparent success for the user.
+  if (res.status === 503 && _attempt < 3) {
+    const wait = 150 * (_attempt + 1) + Math.floor(Math.random() * 100);
+    await new Promise((r) => setTimeout(r, wait));
+    return request(path, method, body, _attempt + 1);
+  }
   let data = null;
   const text = await res.text();
   if (text) {
