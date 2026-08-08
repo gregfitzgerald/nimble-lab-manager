@@ -9,6 +9,7 @@ Mutations additionally require member+, and reset requires manager+.
 """
 
 import csv
+import datetime as _dt
 import io
 import json
 import logging
@@ -47,7 +48,21 @@ auth_router = APIRouter(prefix="/api")
 # helpers
 # --------------------------------------------------------------------------- #
 def _today(conn):
-    """Return SQLite's notion of today as an ISO date string."""
+    """Today's date in the lab's timezone, as an ISO date string.
+
+    date('now') is UTC, which in a container is never the lab's local date --
+    around midnight that shifts every "expiring today", "due today" and
+    forecast-window calculation by a day. NLM_TZ (the same setting the digest
+    scheduler uses) selects the zone; unset keeps the previous UTC behaviour.
+    """
+    name = os.environ.get("NLM_TZ", "").strip()
+    if name:
+        try:
+            from zoneinfo import ZoneInfo
+
+            return _dt.datetime.now(ZoneInfo(name)).date().isoformat()
+        except Exception:  # noqa: BLE001 -- a bad zone must not break every date
+            log.warning("NLM_TZ=%r is not a usable time zone; using UTC", name)
     return conn.execute("SELECT date('now') AS d").fetchone()["d"]
 
 
@@ -884,6 +899,26 @@ def delete_location(node_id: int):
                 status_code=400,
                 detail="location holds containers; move or discard them first",
             )
+        # equipment/it_asset/glassware_item/chore reference a location by id with
+        # no foreign key, so nothing stops the delete at the DB layer. Left
+        # dangling they would point at a dead id -- and because these tables use
+        # INTEGER PRIMARY KEY, SQLite can hand that id to a NEW location later,
+        # silently re-pointing the old rows at an unrelated place. Refuse instead.
+        for table, label in (
+            ("equipment", "equipment"),
+            ("it_asset", "IT assets"),
+            ("glassware_item", "glassware"),
+            ("chore", "maintenance chores"),
+        ):
+            n = conn.execute(
+                f"SELECT COUNT(*) AS c FROM {table} WHERE location_id = ?",  # noqa: S608 -- table names are literals above
+                (node_id,),
+            ).fetchone()["c"]
+            if n:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"location is referenced by {n} {label}; reassign them first",
+                )
         conn.execute("DELETE FROM location_node WHERE id = ?", (node_id,))
         conn.commit()
         return {"ok": True}
@@ -2567,6 +2602,12 @@ async def import_inventory(
             existing = _import_match(conn, row, name)
 
             if existing is not None:
+                # Read the stock figure BEFORE the update so the adjustment we
+                # log is the real change in on-hand.
+                prev_qty = conn.execute(
+                    "SELECT quantity_on_hand FROM inventory WHERE item_id = ?",
+                    (existing["item_id"],),
+                ).fetchone()["quantity_on_hand"]
                 if provided:
                     cols = list(provided.keys())
                     set_clause = ", ".join(f"{c} = ?" for c in cols)
@@ -2581,9 +2622,16 @@ async def import_inventory(
                     # drift by /api/integrity/stock. Recorded as an adjustment,
                     # not consumption, exactly as a counted correction is.
                     if "quantity_on_hand" in provided:
-                        delta = _sync_lots_to_quantity(
+                        # The movement to log is the change in STOCK. Using the
+                        # lot-side delta returned by _sync_lots_to_quantity was
+                        # wrong for any item already carrying drift: it invented
+                        # a movement when stock had not changed, and logged none
+                        # when it had.
+                        stock_delta = provided["quantity_on_hand"] - prev_qty
+                        _sync_lots_to_quantity(
                             conn, existing["item_id"], provided["quantity_on_hand"],
                         )
+                        delta = stock_delta
                         if delta:
                             conn.execute(
                                 """INSERT INTO usage_event
@@ -5085,6 +5133,47 @@ def delete_user_endpoint(user_id: int, user: dict = Depends(auth.require_role("a
                 and _active_admin_count(conn, exclude_id=user_id) == 0:
             raise HTTPException(status_code=400,
                                 detail="cannot delete the last active admin")
+        # Open obligations must be settled first -- deleting the holder would
+        # lose track of who has the glassware.
+        open_loans = conn.execute(
+            "SELECT COUNT(*) AS c FROM glassware_checkout "
+            "WHERE user_id = ? AND returned_at IS NULL",
+            (user_id,),
+        ).fetchone()["c"]
+        if open_loans:
+            raise HTTPException(
+                status_code=400,
+                detail=f"user still holds {open_loans} checked-out item(s); "
+                       "return them first",
+            )
+        # ticket.user_id is NOT NULL, so work history cannot be de-referenced.
+        # Deleting would either orphan it or (via rowid reuse) silently reassign
+        # it to a future user. Deactivating preserves the record and already
+        # blocks login, so that is the correct action here.
+        tickets = conn.execute(
+            "SELECT COUNT(*) AS c FROM ticket WHERE user_id = ?", (user_id,)
+        ).fetchone()["c"]
+        if tickets:
+            raise HTTPException(
+                status_code=400,
+                detail=f"user has {tickets} usage record(s) that must be kept; "
+                       "deactivate the account instead of deleting it",
+            )
+        # Remaining references are nullable history: keep the rows, drop the
+        # pointer, so a recycled id can never re-attach them to someone else.
+        for table, column in (
+            ("glassware_checkout", "user_id"),
+            ("equipment_reservation", "user_id"),
+            ("fund_charge", "charged_by"),
+            ("chore_log", "done_by"),
+            ("preparation_batch", "made_by"),
+            ("count_session", "started_by"),
+            ("count_line", "counted_by"),
+        ):
+            conn.execute(
+                f"UPDATE {table} SET {column} = NULL WHERE {column} = ?",  # noqa: S608 -- identifiers are literals above
+                (user_id,),
+            )
         conn.execute("DELETE FROM session WHERE user_id = ?", (user_id,))
         conn.execute("DELETE FROM app_user WHERE id = ?", (user_id,))
         _audit(conn, user, "user.delete", "app_user", user_id, target["username"])

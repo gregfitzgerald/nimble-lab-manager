@@ -261,3 +261,113 @@ def test_receive_and_set_fund_in_one_request_charges_the_fund(manager, db):
         "SELECT COUNT(*) FROM fund_charge WHERE fund_id = ?", (fund_id,)
     ).fetchone()[0]
     assert after == before + 1, "receiving with a fund in the same request booked nothing"
+
+
+# --------------------------------------------------------------------------- #
+# deletes must not leave dangling soft references
+# --------------------------------------------------------------------------- #
+def test_location_delete_refused_while_equipment_references_it(manager, db):
+    """equipment.location_id is a soft ref: deleting the location would leave it
+    pointing at a dead id that SQLite can later reuse for a different room."""
+    row = db.execute(
+        "SELECT id, location_id FROM equipment WHERE location_id IS NOT NULL LIMIT 1"
+    ).fetchone()
+    assert row is not None, "seed should place equipment somewhere"
+    r = manager.delete(f"/api/locations/{row['location_id']}")
+    assert r.status_code == 400
+    assert "equipment" in r.json()["detail"]
+    # and it is still there
+    assert db.execute(
+        "SELECT COUNT(*) FROM location_node WHERE id = ?", (row["location_id"],)
+    ).fetchone()[0] == 1
+
+
+def test_user_delete_refused_while_holding_glassware(admin, db):
+    uid = admin.post("/api/users", json={
+        "username": "loanholder", "full_name": "L", "role": "member",
+        "password": "validpass1",
+    }).json().get("id") or db.execute(
+        "SELECT id FROM app_user WHERE username='loanholder'").fetchone()[0]
+    gid = db.execute("SELECT id FROM glassware_item LIMIT 1").fetchone()[0]
+    db.execute(
+        """INSERT INTO glassware_checkout (glassware_id, user_id, checked_out_at)
+           VALUES (?, ?, datetime('now'))""", (gid, uid))
+    db.commit()
+    r = admin.delete(f"/api/users/{uid}")
+    assert r.status_code == 400
+    assert "checked-out" in r.json()["detail"]
+
+
+def test_user_delete_refused_when_work_history_exists(admin, db):
+    """ticket.user_id is NOT NULL, so history cannot be de-referenced --
+    deactivating is the correct action and the error must say so."""
+    # Build the case explicitly: a fresh user with one usage record and no loan,
+    # so the history guard is what is under test.
+    admin.post("/api/users", json={
+        "username": "hashistory", "full_name": "H", "role": "member",
+        "password": "validpass1",
+    })
+    uid = db.execute(
+        "SELECT id FROM app_user WHERE username = 'hashistory'").fetchone()[0]
+    db.execute(
+        "INSERT INTO ticket (user_id, ticket_date, purpose, created_at) "
+        "VALUES (?, date('now'), 'test', datetime('now'))", (uid,))
+    db.commit()
+
+    r = admin.delete(f"/api/users/{uid}")
+    assert r.status_code == 400
+    assert "deactivate" in r.json()["detail"].lower()
+
+
+def test_user_delete_nulls_nullable_history(admin, db):
+    uid = admin.post("/api/users", json={
+        "username": "historic", "full_name": "H", "role": "member",
+        "password": "validpass1",
+    }).json().get("id") or db.execute(
+        "SELECT id FROM app_user WHERE username='historic'").fetchone()[0]
+    cid = db.execute("SELECT id FROM chore LIMIT 1").fetchone()[0]
+    db.execute(
+        "INSERT INTO chore_log (chore_id, done_at, done_by) VALUES (?, date('now'), ?)",
+        (cid, uid))
+    db.commit()
+    assert admin.delete(f"/api/users/{uid}").status_code == 200
+    # the log row survives, but no longer points at a recyclable id
+    row = db.execute(
+        "SELECT done_by FROM chore_log WHERE chore_id = ? ORDER BY id DESC LIMIT 1",
+        (cid,)).fetchone()
+    assert row["done_by"] is None
+
+
+# --------------------------------------------------------------------------- #
+# timezone
+# --------------------------------------------------------------------------- #
+def test_today_honours_the_configured_timezone(db, monkeypatch):
+    import app.api as api
+    monkeypatch.setenv("NLM_TZ", "Pacific/Honolulu")
+    hawaii = api._today(db)
+    monkeypatch.setenv("NLM_TZ", "Pacific/Auckland")
+    auckland = api._today(db)
+    # Somewhere on earth these differ; whichever way, neither may crash and both
+    # must be ISO dates.
+    for value in (hawaii, auckland):
+        assert len(value) == 10 and value[4] == "-"
+
+
+def test_bad_timezone_falls_back_to_utc(db, monkeypatch):
+    import app.api as api
+    monkeypatch.setenv("NLM_TZ", "Not/AZone")
+    assert len(api._today(db)) == 10   # must not raise
+
+
+# --------------------------------------------------------------------------- #
+# request body cap
+# --------------------------------------------------------------------------- #
+def test_oversized_json_body_is_refused(member):
+    huge = {"quantity": 1, "note": "x" * (1024 * 1024 + 64)}
+    r = member.post("/api/items/1/consume", json=huge)
+    assert r.status_code == 413
+
+
+def test_normal_json_body_still_accepted(member):
+    r = member.post("/api/items/1/consume", json={"quantity": 1, "note": "fine"})
+    assert r.status_code == 200

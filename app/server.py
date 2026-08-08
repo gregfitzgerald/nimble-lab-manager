@@ -92,9 +92,28 @@ _CSP_EXEMPT = {"/docs", "/redoc", "/openapi.json"}
 _CSRF_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
+# Cap JSON bodies. The multipart upload routes police their own (larger) limits;
+# everything else on /api is small structured data, so a body in the megabytes is
+# either a mistake or an attempt to grow the database without bound.
+_MAX_JSON_BODY = 1 * 1024 * 1024
+
+
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
     path = request.url.path
+
+    if request.method in _CSRF_METHODS and path.startswith("/api/"):
+        content_type = request.headers.get("content-type", "")
+        if "multipart/form-data" not in content_type:
+            try:
+                length = int(request.headers.get("content-length") or 0)
+            except ValueError:
+                length = 0
+            if length > _MAX_JSON_BODY:
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": "request body is too large"},
+                )
     # CSRF double-submit enforcement: only when auth is on AND a session cookie
     # is present (anonymous requests fall through to the route's own 401).
     if (

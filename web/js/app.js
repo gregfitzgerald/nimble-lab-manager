@@ -613,6 +613,7 @@ function initQuickNew() {
 //   actions -- [{label, onClick(handle), primary?, danger?}] footer buttons
 //   onClose -- called when dismissed
 // Dismiss via the X, backdrop click, or Escape.
+let modalSeq = 0;
 function openModal(opts) {
   opts = opts || {};
   const backdrop = document.createElement("div");
@@ -626,7 +627,9 @@ function openModal(opts) {
   head.className = "modal-head";
   const h = document.createElement("div");
   h.className = "modal-title";
+  h.id = "modal-title-" + (++modalSeq);
   h.textContent = opts.title || "";
+  card.setAttribute("aria-labelledby", h.id);
   const x = document.createElement("button");
   x.className = "modal-close";
   x.setAttribute("aria-label", "Close");
@@ -642,15 +645,43 @@ function openModal(opts) {
   card.appendChild(body);
 
   let closed = false;
+  const opener = document.activeElement;   // restore focus here on close
   const handle = { close, card, body };
   function close() {
     if (closed) return;
     closed = true;
     document.removeEventListener("keydown", onKey, true);
     backdrop.remove();
+    // Returning focus to whatever opened the dialog keeps keyboard users where
+    // they were instead of dropping them at the top of the page. When the opener
+    // has since gone (a context-menu item, a re-rendered row), fall back to the
+    // main region rather than leaving focus on <body>.
+    if (opener && opener.isConnected && typeof opener.focus === "function") {
+      opener.focus();
+    } else {
+      const main = document.getElementById("view-root");
+      if (main) main.focus();
+    }
     if (typeof opts.onClose === "function") opts.onClose();
   }
-  function onKey(e) { if (e.key === "Escape") { e.stopPropagation(); close(); } }
+  const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),'
+    + 'select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  function onKey(e) {
+    if (e.key === "Escape") { e.stopPropagation(); close(); return; }
+    // A dialog must contain Tab, or the user tabs into the page behind it.
+    if (e.key !== "Tab" || closed) return;
+    const items = [...card.querySelectorAll(FOCUSABLE)].filter((n) => n.offsetParent !== null);
+    if (!items.length) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault(); last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault(); first.focus();
+    } else if (!card.contains(document.activeElement)) {
+      e.preventDefault(); first.focus();
+    }
+  }
 
   if (opts.actions && opts.actions.length) {
     const foot = document.createElement("div");
