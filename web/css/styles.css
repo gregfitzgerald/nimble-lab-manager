@@ -378,6 +378,11 @@ a:visited { color: var(--visited); }
 .hub-tab {
   appearance: none;
   border: 1px solid transparent;
+  /* The active tab is bold; without reserving that width the whole strip shifts
+     a few px every time you switch tabs. The ::after holds the bold metrics. */
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
   border-bottom: none;
   background: none;
   color: var(--text);
@@ -388,6 +393,14 @@ a:visited { color: var(--visited); }
   margin-bottom: -2px;
 }
 .hub-tab:hover { background: var(--accent-soft); }
+.hub-tab::after {
+  content: attr(data-label);
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  font-weight: 700;
+  pointer-events: none;
+}
 .hub-tab.active {
   color: var(--text);
   font-weight: 700;

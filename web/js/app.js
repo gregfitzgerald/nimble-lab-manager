@@ -446,6 +446,7 @@ async function renderCurrent() {
       const b = document.createElement("button");
       b.className = "hub-tab" + (t.id === tab.id ? " active" : "");
       b.textContent = t.label;
+      b.dataset.label = t.label;   // ::after reserves the bold width (no reflow)
       b.setAttribute("role", "tab");
       b.setAttribute("aria-selected", t.id === tab.id ? "true" : "false");
       b.addEventListener("click", () => { if (t.id !== current.tabId) navigate(t.id); });
@@ -1155,6 +1156,10 @@ function initNotifications() {
     btn.addEventListener("click", () => {
       if (panel.hidden) { renderNotifPanel(); panel.hidden = false; }
       else panel.hidden = true;
+    });
+    document.addEventListener("keydown", (e) => {
+      // Escape closes it, matching every other dismissible surface in the app.
+      if (e.key === "Escape" && !panel.hidden) { panel.hidden = true; btn.focus(); }
     });
     document.addEventListener("click", (e) => {
       if (!panel.hidden && !e.target.closest("#notif-wrap")) panel.hidden = true;

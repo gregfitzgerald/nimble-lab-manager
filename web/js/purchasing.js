@@ -300,6 +300,11 @@ export async function render(root, ctx, params) {
     const listCard = el("div", "card");
     listCard.style.padding = "0";
     listCard.style.marginBottom = "20px";
+    // The card above this one is titled; without a heading here the second
+    // table reads as a continuation of it.
+    const listTitle = el("div", "card-title", "All purchase orders");
+    listTitle.style.padding = "10px 12px 0";
+    listCard.appendChild(listTitle);
     const scroll = el("div", "table-scroll");
     const table = document.createElement("table");
     table.className = "table";
