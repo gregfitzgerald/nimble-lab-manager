@@ -5,6 +5,7 @@ Serves the buildless SPA in web/ at / and the JSON API under /api.
 """
 
 import contextlib
+import mimetypes
 import os
 import sqlite3
 
@@ -149,6 +150,9 @@ async def security_middleware(request: Request, call_next):
 
 # Serve the SPA. web/ is owned by the frontend agents; ensure it exists so the
 # mount does not fail on a fresh checkout, then serve index.html at /.
+# Serve .webmanifest with the correct content-type from the static mount.
+mimetypes.add_type("application/manifest+json", ".webmanifest")
+
 WEB_DIR = os.path.join(ROOT_DIR, "web")
 UPLOADS_DIR = os.path.join(WEB_DIR, "uploads")
 os.makedirs(WEB_DIR, exist_ok=True)

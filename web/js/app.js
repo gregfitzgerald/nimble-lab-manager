@@ -1537,3 +1537,11 @@ window.addEventListener("hashchange", onHashChange);
     handleUnauthorized();
   }
 })();
+
+// Register the service worker (installable PWA + offline-tolerant shell). Only
+// on a secure context, which is where SWs are allowed; a no-op otherwise.
+if ("serviceWorker" in navigator && window.isSecureContext) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => { /* offline shell is best-effort */ });
+  });
+}
