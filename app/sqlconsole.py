@@ -133,7 +133,11 @@ def run_query(db_path, sql, max_rows=MAX_ROWS, timeout=TIMEOUT_SECONDS):
                 f"Query took longer than {timeout:g}s and was stopped. "
                 "Add a WHERE clause or a LIMIT."
             ) from exc
-        if "not authorized" in lowered or "prohibited" in lowered:
+        if (
+            "not authorized" in lowered
+            or "prohibited" in lowered
+            or "authorization denied" in lowered
+        ):
             raise QueryError(
                 "Not allowed. This console is read-only: it cannot change data or "
                 "the schema, and cannot read passwords or session tokens. Only "

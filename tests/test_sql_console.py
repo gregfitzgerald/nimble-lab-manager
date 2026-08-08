@@ -197,3 +197,54 @@ def test_db_path_is_resolved_at_call_time(admin, monkeypatch):
     _enable(admin)
     monkeypatch.setattr(appdb, "DB_PATH", "/nonexistent/nope.db")
     assert _q(admin, "SELECT 1").status_code != 200
+
+
+# --------------------------------------------------------------------------- #
+# a wider battery of escape attempts against the engine
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("label,sql", [
+    ("alias hides the column", "SELECT u.password_hash AS x FROM app_user u"),
+    ("subquery", "SELECT (SELECT password_hash FROM app_user LIMIT 1) AS leak"),
+    ("join to session", "SELECT s.token FROM session s JOIN app_user u ON u.id = s.user_id"),
+    ("cte", "WITH c AS (SELECT password_salt FROM app_user) SELECT * FROM c"),
+    ("temp table", "CREATE TEMP TABLE evil AS SELECT 1"),
+    ("create view", "CREATE VIEW v AS SELECT 1"),
+    ("update behind a cte", "WITH c AS (SELECT 1) UPDATE inventory SET quantity_on_hand = 0"),
+    ("vacuum", "VACUUM"),
+    ("attach via uri", "ATTACH DATABASE 'file:/etc/passwd?mode=ro' AS p"),
+])
+def test_escape_attempts_are_refused(db_path, label, sql):
+    with pytest.raises(sqlconsole.QueryError):
+        sqlconsole.run_query(str(db_path), sql, timeout=2.0)
+
+
+def test_recursive_cte_bomb_is_stopped(db_path):
+    """An unbounded recursive CTE must hit the deadline, not hang the server."""
+    with pytest.raises(sqlconsole.QueryError) as exc:
+        sqlconsole.run_query(
+            str(db_path),
+            "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c) "
+            "SELECT COUNT(*) FROM c",
+            timeout=1.0,
+        )
+    assert "longer than" in str(exc.value).lower()
+
+
+def test_refusals_read_as_plain_english(db_path):
+    """Users see these constantly, so they must not be raw SQLite strings."""
+    for sql in ("VACUUM", "DELETE FROM inventory", "SELECT password_hash FROM app_user"):
+        with pytest.raises(sqlconsole.QueryError) as exc:
+            sqlconsole.run_query(str(db_path), sql, timeout=2.0)
+        assert "Not allowed" in str(exc.value), f"{sql!r} -> {exc.value}"
+
+
+def test_ordinary_analytics_queries_still_work(db_path):
+    """The console has to remain useful, not just safe."""
+    out = sqlconsole.run_query(
+        str(db_path),
+        """SELECT i.category, COUNT(*) AS n, ROUND(SUM(i.quantity_on_hand * i.unit_cost), 2) AS value
+             FROM inventory i WHERE i.status = 'active'
+            GROUP BY i.category ORDER BY value DESC""",
+    )
+    assert out["row_count"] > 0
+    assert out["columns"] == ["category", "n", "value"]
