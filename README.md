@@ -218,6 +218,17 @@ bell and global search in the top bar.
 - **People** (admin-only) -- create/deactivate users, assign roles, reset
   passwords.
 - **History** (manager+) -- the append-only audit trail.
+- **SQL console** (optional, off by default) -- the backend is a single SQLite
+  file, so an admin who prefers SQL can query it directly for questions no
+  built-in report anticipates. Enable it in **Settings > SQL console**; until
+  then the tab does not exist and the endpoints refuse. It is defended in four
+  independent layers: the feature gate plus admin-only routes, a connection
+  opened `mode=ro`, a SQLite **authorizer** that vetoes anything but a plain read
+  (no writes, DDL, `ATTACH`, `PRAGMA`, or `load_extension` -- enforced at parse
+  level, so it cannot be talked around the way a regex can), and refusal to read
+  password hashes or session tokens even for an admin. One statement at a time,
+  results capped at 1000 rows, a 5-second deadline so a cartesian join cannot pin
+  the CPU, and every query -- including refused ones -- written to the audit log.
 - **Reports** -- summary counts, role-gated CSV exports, and CSV import with a
   dry-run preview and per-row errors. Imported rows match existing items by
   catalog number, then item id, then name, so re-importing an edited vendor

@@ -1018,3 +1018,52 @@ textarea:focus-visible,
   #reset-btn { display: none !important; }
   .topbar { gap: 8px; }
 }
+
+/* --------------------------------------------------------------------------
+   SQL console (Admin > SQL; opt-in). Monospace editor + result grid, styled
+   with the same 1px/zero-radius vocabulary as the rest of the app.
+   -------------------------------------------------------------------------- */
+.sql-editor {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
+
+.sql-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.sql-samples {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+/* Errors and truncation notices are the only colour on this page -- colour
+   signals a problem, never decoration. */
+.sql-error { color: var(--danger); }
+.sql-warn { color: var(--warn); }
+
+.sql-schema details { border-top: 1px solid var(--border); padding: 6px 0; }
+.sql-schema details:first-child { border-top: 0; }
+.sql-schema summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.sql-cols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}

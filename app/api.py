@@ -33,7 +33,8 @@ from fastapi import (
 )
 from pydantic import BaseModel
 
-from . import auth, notify
+from . import auth, notify, sqlconsole
+from . import db as _db
 from .db import ROOT_DIR, get_conn, rebuild_db
 
 log = logging.getLogger("nlm.api")
@@ -1456,6 +1457,81 @@ def restock_item(
         }
     finally:
         conn.close()
+
+
+# --------------------------------------------------------------------------- #
+# read-only SQL console (opt-in; see app/sqlconsole.py for the safety model)
+# --------------------------------------------------------------------------- #
+def _sql_console_enabled(conn):
+    """True only when an admin has explicitly switched the console on."""
+    raw = _get_setting(conn, "ui_config", None)
+    if not raw:
+        return False
+    try:
+        cfg = json.loads(raw)
+    except (ValueError, TypeError):
+        return False
+    return isinstance(cfg, dict) and cfg.get("sql_console_enabled") is True
+
+
+def _require_sql_console(conn):
+    if not _sql_console_enabled(conn):
+        raise HTTPException(
+            status_code=403,
+            detail="the SQL console is disabled (enable it in Settings)",
+        )
+
+
+class SqlQueryBody(BaseModel):
+    sql: str
+
+
+@router.get("/sql/schema", dependencies=[Depends(auth.require_role("admin"))])
+def sql_schema():
+    """Queryable tables and columns, so the console can show what exists."""
+    conn = get_conn()
+    try:
+        _require_sql_console(conn)
+    finally:
+        conn.close()
+    return {"tables": sqlconsole.schema_overview(_db.DB_PATH)}
+
+
+@router.post("/sql/query", dependencies=[Depends(auth.require_role("admin"))])
+def sql_query(body: SqlQueryBody, user: dict = Depends(auth.require_role("admin"))):
+    """Run one read-only SELECT against the lab database.
+
+    Admin-only AND off unless explicitly enabled. Every query is audited: this is
+    the most powerful surface in the app, so it should never be silent.
+    """
+    conn = get_conn()
+    try:
+        _require_sql_console(conn)
+    finally:
+        conn.close()
+
+    sql = (body.sql or "").strip()
+    try:
+        result = sqlconsole.run_query(_db.DB_PATH, sql)
+    except sqlconsole.QueryError as exc:
+        # Record refused/failed attempts too -- they are the interesting ones.
+        audit_conn = get_conn()
+        try:
+            _audit(audit_conn, user, "sql.query.failed", "app_setting", None,
+                   f"{sql[:200]} -- {exc}")
+            audit_conn.commit()
+        finally:
+            audit_conn.close()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    audit_conn = get_conn()
+    try:
+        _audit(audit_conn, user, "sql.query", "app_setting", None,
+               f"{sql[:200]} -> {result['row_count']} row(s)")
+        audit_conn.commit()
+    finally:
+        audit_conn.close()
+    return result
 
 
 class ResolveCodeBody(BaseModel):

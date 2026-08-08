@@ -25,6 +25,7 @@ import * as people from "./people.js";
 import * as history from "./history.js";
 import * as game from "./game.js";
 import * as settings from "./settings.js";
+import * as sql from "./sql.js";
 import * as help from "./help.js";
 import * as auth from "./auth.js";
 import { openScanner } from "./scanner.js";
@@ -147,7 +148,7 @@ const ROLE_RANK = { viewer: 0, member: 1, manager: 2, admin: 3 };
 const CHILD_MODULES = [
   dashboard, analytics, reports, inventory, catalog, kits, counts, controlled,
   safety, labels, preparations, purchasing, funds, map, equipment, maintenance,
-  it, glassware, tickets, usage, settings, people, history, game, help,
+  it, glassware, tickets, usage, settings, people, history, game, help, sql,
 ];
 const CHILDREN = new Map(CHILD_MODULES.map((m) => [m.view.id, m]));
 
@@ -183,6 +184,7 @@ const HUB_DEFS = [
   ] },
   { id: "admin", label: "Admin", tabs: [
     ["settings", "Settings"], ["people", "People"], ["history", "Audit log"],
+    ["sql", "SQL"],
   ] },
   { id: "help", label: "Help", tabs: [
     ["game", "Tutorial"], ["help", "Guide"],
@@ -224,7 +226,15 @@ function canSee(mod) { // child view visibility
   return canSeeRank(ROLE_RANK[viewMinRole(mod)] || 0);
 }
 function canSeeHub(hub) { return canSeeRank(hub.minRank); }
-function visibleTabs(hub) { return hub.tabs.filter((t) => canSee(t.mod)); }
+// A tab may also require a ui_config flag (view.requiresConfig), which is how
+// the opt-in SQL console stays invisible until an admin turns it on.
+function tabEnabled(mod) {
+  const key = mod && mod.view && mod.view.requiresConfig;
+  return !key || uiConfig[key] === true;
+}
+function visibleTabs(hub) {
+  return hub.tabs.filter((t) => canSee(t.mod) && tabEnabled(t.mod));
+}
 function firstVisibleTabId(hub) {
   const t = visibleTabs(hub)[0];
   return t ? t.id : null;

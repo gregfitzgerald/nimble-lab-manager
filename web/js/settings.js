@@ -187,6 +187,30 @@ export async function render(root, ctx) {
   catCard.appendChild(catArea);
   root.appendChild(catCard);
 
+  // ----- SQL console (opt-in) ---------------------------------------------
+  const sqlCard = el("div", "card");
+  sqlCard.appendChild(el("div", "card-title", "SQL console"));
+  sqlCard.appendChild(el("p", "muted",
+    "Adds an admin-only SQL tab for querying the lab database directly, for "
+    + "questions the built-in reports do not answer. Off by default. Queries are "
+    + "read-only and cannot change data, alter the schema, or read passwords or "
+    + "session tokens; results are capped and every query is written to the audit "
+    + "log. Only enable it if you want SQL access."));
+  const sqlToggle = document.createElement("label");
+  sqlToggle.style.display = "flex";
+  sqlToggle.style.alignItems = "center";
+  sqlToggle.style.gap = "8px";
+  const sqlCheck = document.createElement("input");
+  sqlCheck.type = "checkbox";
+  sqlCheck.checked = work.sql_console_enabled === true;
+  sqlCheck.addEventListener("change", () => {
+    work.sql_console_enabled = sqlCheck.checked;
+  });
+  sqlToggle.appendChild(sqlCheck);
+  sqlToggle.appendChild(document.createTextNode("Enable the SQL console"));
+  sqlCard.appendChild(sqlToggle);
+  root.appendChild(sqlCard);
+
   // ----- Email alert digest -----------------------------------------------
   const digestCard = el("div", "card");
   digestCard.appendChild(el("div", "card-title", "Email alert digest"));
