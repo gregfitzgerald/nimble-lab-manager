@@ -66,7 +66,7 @@ function legend(items) {
     wrap.appendChild(el("span", { style: "display:inline-flex;align-items:center;gap:6px;" }, [
       it.line
         ? el("span", { style: `width:16px;height:0;border-top:2px ${it.dashed ? "dashed" : "solid"} ${it.color};display:inline-block;` })
-        : el("span", { style: `width:11px;height:11px;border-radius:3px;background:${it.color};display:inline-block;` }),
+        : el("span", { style: `width:11px;height:11px;background:${it.color};display:inline-block;` }),
       document.createTextNode(it.label),
     ]));
   }
@@ -148,12 +148,14 @@ function axisTitle(F, text, side) {
   });
 }
 
-function makeSvg(F, minWidth) {
+function makeSvg(F) {
+  // min-width is the chart's OWN width: it never scales below natural size
+  // (which shrinks the text too) -- it scrolls inside .chart-scroll instead.
   return svg("svg", {
     viewBox: `0 0 ${F.width} ${F.height}`,
     preserveAspectRatio: "xMidYMid meet",
     role: "img",
-    style: `width:100%;min-width:${minWidth}px;height:auto;display:block;font-family:var(--font,system-ui);`,
+    style: `width:100%;min-width:${F.width}px;height:auto;display:block;font-family:var(--font,system-ui);`,
   });
 }
 
@@ -174,7 +176,7 @@ function renderSpend(plot, ctx, rows) {
   const my = niceTicks(maxMonthly);
   const cy = niceTicks(maxCum);
 
-  const s = makeSvg(F, 560);
+  const s = makeSvg(F);
   s.appendChild(yAxis(F, my.ticks, my.top, v => ctx.fmt.money(v)));
   s.appendChild(axisLine(F));
   s.appendChild(axisTitle(F, "Monthly spend", "left"));
@@ -196,7 +198,7 @@ function renderSpend(plot, ctx, rows) {
     const h = ((r.monthly_spend || 0) / my.top) * F.ih;
     const rect = svg("rect", {
       x: cx - bw / 2, y: F.y1 - h, width: bw, height: Math.max(0, h),
-      rx: 4, style: "fill:var(--accent);",
+      style: "fill:var(--accent);",
     });
     rect.appendChild(svg("title", { text: `${r.month}: ${ctx.fmt.money(r.monthly_spend || 0)}` }));
     s.appendChild(rect);
@@ -241,7 +243,7 @@ function renderUsage(plot, ctx, data, days) {
   const maxQ = Math.max(...series.map(d => d.quantity || 0), 1);
   const qy = niceTicks(maxQ);
 
-  const s = makeSvg(F, 600);
+  const s = makeSvg(F);
 
   // gradient for the area fill (theme-aware via var() stop colors)
   const gid = "usageGrad";
@@ -313,7 +315,7 @@ function renderForecast(plot, ctx, rows) {
     const maxDays = Math.min(Math.max(...withRate.map(r => r.days_to_stockout), 1), FORECAST_HORIZON);
     const dx = niceTicks(maxDays);
 
-    const s = makeSvg(F, 520);
+    const s = makeSvg(F);
     // vertical gridlines + x labels
     for (const t of dx.ticks) {
       const x = F.x0 + (t / dx.top) * F.iw;
@@ -334,7 +336,7 @@ function renderForecast(plot, ctx, rows) {
         style: "fill:var(--text);font-size:11.5px;",
         text: truncate(r.item_name, 22),
       }));
-      const rect = svg("rect", { x: F.x0, y: cy - bh / 2, width: Math.max(1, w), height: bh, rx: 3, style: `fill:${color};` });
+      const rect = svg("rect", { x: F.x0, y: cy - bh / 2, width: Math.max(1, w), height: bh, style: `fill:${color};` });
       rect.appendChild(svg("title", { text: `${r.item_name}: ${Math.round(r.days_to_stockout)} days (on hand ${ctx.fmt.num(r.quantity_on_hand)}, ~${r.avg_daily_use.toFixed(2)}/day)` }));
       s.appendChild(rect);
       s.appendChild(svg("text", {
@@ -421,7 +423,7 @@ function renderColony(plot, ctx, rows) {
   const maxN = Math.max(...rows.map(r => r.n_alive || 0), 1);
   const ny = niceTicks(maxN);
 
-  const s = makeSvg(F, 560);
+  const s = makeSvg(F);
   s.appendChild(yAxis(F, ny.ticks, ny.top, v => ctx.fmt.num(v)));
   s.appendChild(axisLine(F));
   s.appendChild(axisTitle(F, "Animals alive", "left"));
@@ -441,7 +443,7 @@ function renderColony(plot, ctx, rows) {
       if (val > 0) {
         const rect = svg("rect", {
           x: cx - bw / 2, y: F.y1 - h, width: bw, height: Math.max(0, h),
-          rx: 3, style: `fill:${sexColor(sex)};`,
+          style: `fill:${sexColor(sex)};`,
         });
         const age = rec && rec.avg_age_weeks != null ? `, avg ${Number(rec.avg_age_weeks).toFixed(1)}w` : "";
         rect.appendChild(svg("title", { text: `${strain} ${sex}: ${val} alive${age}` }));

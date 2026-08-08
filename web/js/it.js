@@ -14,8 +14,7 @@ const KINDS = [
   ["other", "Other"],
 ];
 const STATUSES = [
-  ["in_use", "In use"],
-  ["spare", "Spare"],
+  ["in_service", "In service"],
   ["repair", "Repair"],
   ["retired", "Retired"],
 ];
@@ -28,10 +27,9 @@ function el(tag, cls, txt) {
   return e;
 }
 function statusBadge(status) {
+  if (status === "in_service") return el("span", "badge badge-ok", "in service");
   if (status === "repair") return el("span", "badge badge-warn", "repair");
   if (status === "retired") return el("span", "badge badge-danger", "retired");
-  if (status === "spare") return el("span", "badge", "spare");
-  if (status === "in_use") return el("span", "badge badge-ok", "in use");
   return el("span", "badge", status || "unknown");
 }
 function field(labelText, inputEl) {

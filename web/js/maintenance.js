@@ -126,11 +126,11 @@ export async function render(root, ctx, params) {
     toolbar.style.display = "flex";
     toolbar.style.gap = "10px";
     toolbar.style.alignItems = "center";
+    toolbar.style.flexWrap = "wrap";
     toolbar.style.marginBottom = "16px";
     const searchInput = document.createElement("input");
     searchInput.className = "chip";
     searchInput.placeholder = "Search chores...";
-    searchInput.style.minWidth = "220px";
     searchInput.addEventListener("input", applySearch);
     toolbar.appendChild(searchInput);
     // Show-deprecated toggle: retired chores are hidden by default.

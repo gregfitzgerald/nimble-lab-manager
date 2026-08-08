@@ -84,7 +84,7 @@ export async function render(root, ctx, params) {
       const tr = el("tr");
       tr.appendChild(el("td", null, row.label));
       const val = counts[row.key];
-      const td = el("td");
+      const td = el("td", "right mono");
       const isProblem = row.problem && Number(val) > 0;
       const span = el("span", isProblem ? "badge badge-warn" : null, String(val));
       if (isProblem && (row.key === "expired" || row.key === "misplaced" || row.key === "compat_conflicts")) {
@@ -339,7 +339,7 @@ async function refreshGlance(glanceCard, ctx) {
       const tr = el("tr");
       tr.appendChild(el("td", null, row.label));
       const val = counts[row.key];
-      const td = el("td");
+      const td = el("td", "right mono");
       const isProblem = row.problem && Number(val) > 0;
       const span = el("span", isProblem ? "badge badge-warn" : null, String(val));
       if (isProblem && (row.key === "expired" || row.key === "misplaced" || row.key === "compat_conflicts")) {

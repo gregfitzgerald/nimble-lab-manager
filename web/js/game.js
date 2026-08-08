@@ -724,8 +724,8 @@ function paintScore(root, state, ctx) {
     stat('Budget', money(Math.round(state.budget)), budgetColor),
     stat('Stock health', healthPct + '%', healthColor),
     stat('Productivity', '+' + n(Math.round(state.productivity)), 'var(--ok)'),
-    stat('Stockout loss', '-' + n(Math.round(state.stockouts)), 'var(--danger)'),
-    stat('Expiry waste', '-' + n(Math.round(state.waste)), 'var(--warn)'),
+    stat('Stockout loss', state.stockouts > 0 ? '-' + n(Math.round(state.stockouts)) : '0', state.stockouts > 0 ? 'var(--danger)' : 'var(--text)'),
+    stat('Expiry waste', state.waste > 0 ? '-' + n(Math.round(state.waste)) : '0', state.waste > 0 ? 'var(--warn)' : 'var(--text)'),
   ].join('');
 }
 

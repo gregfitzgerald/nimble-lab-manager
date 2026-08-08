@@ -165,6 +165,7 @@ export async function render(root, ctx, params) {
       const roleTd = document.createElement("td");
       const roleSel = document.createElement("select");
       roleSel.className = "chip";
+      roleSel.style.minWidth = "90px";
       for (const r of ROLES) {
         const opt = el("option", null, r);
         opt.value = r;

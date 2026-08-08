@@ -4961,7 +4961,14 @@ def item_qr(item_id: int, request: Request):
     buf = io.BytesIO()
     segno.make(url, error="m").save(buf, kind="svg", scale=4, border=2,
                                     dark="#000000", light="#ffffff")
-    return Response(content=buf.getvalue(), media_type="image/svg+xml")
+    # The QR encodes only the item id, so it never changes -- let the browser
+    # cache it. Without this the labels sheet re-fetches 20 QR codes on every
+    # open, leaving cells blank for seconds on a cold load.
+    return Response(
+        content=buf.getvalue(),
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 # =========================================================================== #
