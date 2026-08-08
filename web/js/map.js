@@ -981,7 +981,7 @@ export async function render(root, ctx, params) {
     const g = svgEl("g", { class: cls.join(" ") });
     g.__unit = u; // for context-menu hit-testing
     const rect = svgEl("rect", {
-      x: u.map_x, y: u.map_y, width: u.map_w, height: u.map_h, rx: 8 * k,
+      x: u.map_x, y: u.map_y, width: u.map_w, height: u.map_h, rx: 0,
     });
     g.appendChild(rect);
     const t = svgEl("text", {
@@ -1009,7 +1009,7 @@ export async function render(root, ctx, params) {
 
     const k = state.space.k;
     const rect = svgEl("rect", {
-      x: u.map_x, y: u.map_y, width: u.map_w, height: u.map_h, rx: 6 * k,
+      x: u.map_x, y: u.map_y, width: u.map_w, height: u.map_h, rx: 0,
     });
     g.appendChild(rect);
     // scale font to unit size but clamp (clamps scale with the space factor)
@@ -2009,7 +2009,7 @@ export async function render(root, ctx, params) {
     if (state.selectedUnitId !== u.id) return;
     const hs = 16 * state.space.k;
     const handle = svgEl("rect", {
-      class: "map-resize-handle", rx: 4 * state.space.k, width: hs, height: hs,
+      class: "map-resize-handle", rx: 0, width: hs, height: hs,
       x: u.map_x + u.map_w - hs / 2, y: u.map_y + u.map_h - hs / 2,
     });
     handle.addEventListener("pointerdown", (ev) => {

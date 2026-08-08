@@ -445,6 +445,12 @@ CREATE TABLE notification (
 
 CREATE INDEX idx_notification_unread ON notification(read_at);
 CREATE INDEX idx_notification_dedupe ON notification(kind, entity_type, entity_id);
+-- The reconciler dedupes broadcasts by (kind, entity_type, entity_id) among
+-- UNREAD rows. Enforce that in the schema: concurrent polls used to each read
+-- "no alert exists" and each insert one, permanently duplicating every alert.
+CREATE UNIQUE INDEX idx_notification_unique_open
+    ON notification(kind, entity_type, entity_id)
+    WHERE read_at IS NULL AND user_id IS NULL;
 
 -- =====================================================================
 -- CYCLE COUNT / STOCKTAKE RECONCILIATION

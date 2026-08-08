@@ -885,8 +885,18 @@ function initSearch() {
   if (!input) return;
   searchWired = true;
   input.readOnly = true;
-  input.addEventListener("focus", openCommandPalette);
+  // Deliberately NOT on 'focus': opening the palette when the input merely
+  // receives focus made Tab a keyboard trap -- tabbing into the search stole
+  // focus into the palette, and dismissing it dropped focus to <body>, so the
+  // main content could never be reached by keyboard at all. Click and Enter/Space
+  // are explicit intent; '/' and Ctrl-K are wired below.
   input.addEventListener("click", openCommandPalette);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      openCommandPalette();
+    }
+  });
   document.addEventListener("keydown", (e) => {
     const isSlash = e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey;
     const isK = (e.key === "k" || e.key === "K") && (e.metaKey || e.ctrlKey);
@@ -919,12 +929,21 @@ function _cmdkParse(raw) {
 function _has(v, n) { return String(v || "").toLowerCase().includes(n); }
 
 let paletteEl = null;
+let paletteOpener = null;   // element to restore focus to when the palette closes
 function closeCommandPalette() {
   if (!paletteEl) return;
   paletteEl.remove();
   paletteEl = null;
-  const si = document.getElementById("search-input");
-  if (si) si.blur();
+  // Return focus where the user left it, so dismissing the palette does not
+  // dump them back at the top of the tab order.
+  const back = paletteOpener;
+  paletteOpener = null;
+  if (back && back.isConnected && typeof back.focus === "function") {
+    back.focus();
+  } else {
+    const si = document.getElementById("search-input");
+    if (si) si.blur();
+  }
 }
 // Scan a printed label and open that item. The server owns code parsing (QR
 // deep link / item id / vendor catalog number) via /api/scan/resolve, so the
@@ -947,6 +966,7 @@ function scanToItem() {
 }
 
 function openCommandPalette() {
+  if (!paletteEl) paletteOpener = document.activeElement;
   if (paletteEl) return;
   const backdrop = el2("div", "cmdk-backdrop");
   const box = el2("div", "cmdk-box");

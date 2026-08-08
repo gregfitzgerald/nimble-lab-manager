@@ -10,7 +10,11 @@ echo.
 
 REM Start the server in its own WSL window. That window shows the server log and
 REM stays open while the app runs; closing it stops the server.
-start "Nimble Lab Manager - server (close to stop)" wsl.exe -e bash -lc "cd /mnt/c/Users/gregs/nimble-lab-manager && python3 run.py"
+REM The repo directory comes from this script's own location (%~dp0), converted
+REM to a WSL path, so the launcher works wherever the repo has been cloned.
+set "HERE=%~dp0"
+if "%HERE:~-1%"=="\" set "HERE=%HERE:~0,-1%"
+start "Nimble Lab Manager - server (close to stop)" wsl.exe -e bash -lc "cd \"$(wslpath -a '%HERE%')\" && python3 run.py"
 
 REM Poll the server until it responds (up to ~30s), then open the browser.
 set /a tries=0

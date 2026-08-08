@@ -51,6 +51,10 @@ _DANGEROUS_FUNCTIONS = {"load_extension", "readfile", "writefile", "edit", "fts3
 
 MAX_ROWS = 1000
 TIMEOUT_SECONDS = 5.0
+# A thousand rows can still be enormous if a column holds a large blob or a
+# generated string, so cap the total payload as well as the row count.
+MAX_RESULT_BYTES = 4 * 1024 * 1024
+MAX_CELL_CHARS = 4000
 
 
 class QueryError(Exception):
@@ -119,9 +123,24 @@ def run_query(db_path, sql, max_rows=MAX_ROWS, timeout=TIMEOUT_SECONDS):
         if cur.description is None:
             raise QueryError("That statement returned no result set.")
         columns = [d[0] for d in cur.description]
-        rows = cur.fetchmany(max_rows + 1)
-        truncated = len(rows) > max_rows
-        rows = rows[:max_rows]
+        # Stream row by row rather than fetchmany(max_rows + 1): a query like
+        # SELECT zeroblob(...) or a big group_concat can make a single row huge,
+        # so stop on a byte budget as well as a row count.
+        rows = []
+        budget = MAX_RESULT_BYTES
+        truncated = False
+        while len(rows) < max_rows:
+            row = cur.fetchone()
+            if row is None:
+                break
+            safe = _safe_row(row)
+            rows.append(safe)
+            budget -= sum(len(str(v)) for v in safe if v is not None)
+            if budget <= 0:
+                truncated = True
+                break
+        else:
+            truncated = cur.fetchone() is not None
     except sqlite3.DatabaseError as exc:
         # Authorizer denials surface as a bare "not authorized" DatabaseError and
         # timeouts as "interrupted"; translate both into something a human can act
@@ -149,6 +168,14 @@ def run_query(db_path, sql, max_rows=MAX_ROWS, timeout=TIMEOUT_SECONDS):
                 "written from here."
             ) from exc
         raise QueryError(f"SQL error: {msg}") from exc
+    except sqlite3.Warning as exc:
+        # sqlite3.Warning is NOT a DatabaseError subclass, so without this it
+        # escaped as an unhandled 500 (and the attempt went unaudited).
+        raise QueryError(f"SQL error: {exc}") from exc
+    except (ValueError, TypeError, OverflowError) as exc:
+        # Value coercion failures (e.g. an out-of-range number) are bad input,
+        # not a server fault.
+        raise QueryError(f"Could not return that result: {exc}") from exc
     finally:
         try:
             conn.set_authorizer(None)
@@ -158,7 +185,7 @@ def run_query(db_path, sql, max_rows=MAX_ROWS, timeout=TIMEOUT_SECONDS):
 
     return {
         "columns": columns,
-        "rows": [_safe_row(r) for r in rows],
+        "rows": rows,
         "row_count": len(rows),
         "truncated": truncated,
         "elapsed_ms": int((time.monotonic() - started) * 1000),
@@ -166,11 +193,23 @@ def run_query(db_path, sql, max_rows=MAX_ROWS, timeout=TIMEOUT_SECONDS):
 
 
 def _safe_row(row):
-    """Coerce a row to JSON-safe values (bytes/blobs become a short placeholder)."""
+    """Coerce a row to JSON-safe values.
+
+    Blobs become a short placeholder, over-long strings are clipped, and
+    non-finite floats (SELECT 1e400) become text -- json.dumps emits bare
+    Infinity/NaN for those, which is invalid JSON and made the response
+    unparseable to the client.
+    """
     out = []
     for value in row:
         if isinstance(value, (bytes, bytearray, memoryview)):
             out.append(f"<{len(bytes(value))} bytes>")
+        elif isinstance(value, float) and (value != value or value in (
+            float("inf"), float("-inf")
+        )):
+            out.append(str(value))
+        elif isinstance(value, str) and len(value) > MAX_CELL_CHARS:
+            out.append(value[:MAX_CELL_CHARS] + f"... (+{len(value) - MAX_CELL_CHARS} chars)")
         else:
             out.append(value)
     return out

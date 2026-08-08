@@ -45,14 +45,28 @@ _INDEX_MIGRATIONS = """
 CREATE INDEX IF NOT EXISTS idx_container_lot ON container(item_lot_id);
 """
 
+# Applied separately: a UNIQUE index fails to build if the table already holds
+# duplicates, so clear them first (keeping the lowest id of each group).
+_DEDUPE_NOTIFICATIONS = """
+DELETE FROM notification
+ WHERE read_at IS NULL AND user_id IS NULL
+   AND id NOT IN (SELECT MIN(id) FROM notification
+                   WHERE read_at IS NULL AND user_id IS NULL
+                   GROUP BY kind, entity_type, entity_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_unique_open
+    ON notification(kind, entity_type, entity_id)
+    WHERE read_at IS NULL AND user_id IS NULL;
+"""
+
 
 def _apply_index_migrations(conn):
     """Bring an existing database up to date with later-added indexes."""
-    try:
-        conn.executescript(_INDEX_MIGRATIONS)
-    except sqlite3.DatabaseError:
-        # A database predating these tables simply has nothing to index yet.
-        pass
+    for script in (_INDEX_MIGRATIONS, _DEDUPE_NOTIFICATIONS):
+        try:
+            conn.executescript(script)
+        except sqlite3.DatabaseError:
+            # A database predating these tables simply has nothing to index yet.
+            pass
 
 
 def init_db(force=False, seed_demo=None):

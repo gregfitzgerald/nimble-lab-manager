@@ -19,7 +19,9 @@ checking, analytics, and an interactive tutorial. It is a portfolio proof-of-con
 built by a former lab manager on a domain I ran for five years, not a toy dataset.
 
 Buildless by design: no npm, no bundler, no CDN, no front-end framework. Clone
-and run one command, and it works with the network unplugged.
+and run one command, and the app itself works with the network unplugged. (The
+one exception is the interactive `/docs` API explorer, which is FastAPI's stock
+Swagger UI and loads its assets from a CDN.)
 
 ### Walkthrough
 
@@ -144,7 +146,7 @@ creates a single admin:
   logs, then change it in **Admin > People**.
 
 From there you build your own lab: add users, draw your rooms and freezers on the
-map, and bulk-import your existing stock (**Admin > Reports > Import**). Because
+map, and bulk-import your existing stock (**Home > Reports > Import inventory**). Because
 there is no demo data to wipe, the destructive "Reset demo data" action is
 disabled outside demo mode. Cookies are marked `Secure` automatically over HTTPS
 (and `fly.toml` sets `NLM_SECURE_COOKIES=1`).
@@ -176,8 +178,11 @@ scheduler can fire.)
 
 ## Feature tour
 
-The SPA has 20 views behind a role-aware left-hand nav, plus a live notification
-bell and global search in the top bar.
+The SPA organises 26 views into 8 hub pages (Home, Inventory, Preparations,
+Procurement, Facilities, Usage, Admin, Help), each hub a landing page with tabs,
+behind a role-aware left-hand nav -- plus a live notification bell, global search
+and a command palette (Ctrl-K) in the top bar. An admin can rename, reorder or
+hide hubs in Settings.
 
 - **Dashboard** -- command-center counts and a deduplicated "attention needed"
   feed built from live state.
@@ -195,8 +200,17 @@ bell and global search in the top bar.
   alternative.
 - **Kits** -- bill-of-materials recipes; assembling a kit depletes every
   component under the same guarded stock path as a manual consume.
-- **Stocktake** -- cycle-count sessions against a location, reconciled against
-  what the map expects, closing to a count-accuracy KPI.
+- **Preparations** -- in-house recipes (buffers, media, mixes) turned into dated
+  batches; making a batch draws its ingredients down through the same guarded
+  stock path, and batches carry their own expiry into the alert feed.
+- **Glassware** -- a check-out register for shared glassware and dishware: who
+  holds each piece, when it is due back, and a board of what is currently out,
+  with overdue returns raising an alert.
+- **IT** -- computers and instruments-with-a-licence: hardware assets (serial,
+  warranty, assignee) and software licences whose expiry feeds the same alerts.
+- **Maintenance** -- recurring chores (cleaning rotas, calibration, service) on a
+  schedule, completing one advancing its next-due date; stale chores can be
+  deprecated without losing their history.
 - **Tickets** -- "work session" records (who used what, and why), optionally
   pre-filled from a reusable task template, feeding the same `usage_event` log.
 - **Map** -- clickable SVG floor plan (optionally over an uploaded blueprint)
@@ -322,7 +336,7 @@ real cross-vendor catalog. `make reset` restores the standard feature-demo seed.
 
 ## Testing and quality
 
-**263 automated tests** back the app, run with `pytest` against FastAPI's
+**438 automated tests** back the app, run with `pytest` against FastAPI's
 in-process `TestClient` -- each test gets its own temporary SQLite database, so
 running the suite never touches your development `lab.db`:
 
@@ -368,6 +382,29 @@ repeated failures).
   `NLM_AUTH=off` escape hatch for open local access.
 - **No build step, no CDN, no external runtime dependencies at the browser** --
   the whole thing works fully offline.
+
+## Configuration reference
+
+Every environment variable the app reads. All are optional; the defaults are what
+`python3 run.py` gives you.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `NLM_AUTH` | `on` | `off` disables login entirely (every request acts as admin). Local/scripting only. |
+| `NLM_SEED_DEMO` | off | `1` loads the demo lab and the four demo logins. `run.py` sets it; deployments leave it off and start empty. |
+| `NLM_ADMIN_USER` | `admin` | Username for the admin bootstrapped on an empty database. |
+| `NLM_ADMIN_PASSWORD` | generated | Password for that admin. If unset, a random one is generated and logged once at startup. |
+| `NLM_SECURE_COOKIES` | off | Force the `Secure` cookie flag. Set automatically for HTTPS requests; `fly.toml` pins it on. |
+| `NLM_ALLOW_RESET` | off | Permit `POST /api/reset` (which wipes every table) outside demo mode. Leave off on a real lab. |
+| `NLM_TZ` | server local | IANA zone (e.g. `America/New_York`) for the digest send hour. In a container the server clock is UTC, so set this to get your actual morning. |
+| `NLM_SCHEDULER` | off | `1` starts the daily alert-digest thread. |
+| `NLM_DIGEST_HOUR` | `7` | Hour (0-23, in `NLM_TZ`) to send the digest. |
+| `NLM_DIGEST_TO` | -- | Comma-separated digest recipients. |
+| `NLM_SMTP_HOST` | -- | SMTP server. Unset means email is disabled (the in-app digest preview still works). |
+| `NLM_SMTP_PORT` | `587` | SMTP port. |
+| `NLM_SMTP_USER` / `NLM_SMTP_PASSWORD` | -- | SMTP credentials, if the server needs them. |
+| `NLM_SMTP_FROM` | `NLM_SMTP_USER` | `From:` address on the digest. |
+| `NLM_SMTP_TLS` | on | `0` disables STARTTLS. |
 
 ## Deploy
 

@@ -381,9 +381,9 @@ function forecastRow(ctx, r) {
   const clickable = { style: "cursor:pointer;", on: { click: () => ctx.navigate("inventory", { itemId: r.item_id }) } };
   return el("tr", clickable, [
     el("td", { text: r.item_name }),
-    el("td", { text: ctx.fmt.num(r.quantity_on_hand) }),
-    el("td", { text: r.avg_daily_use != null ? Number(r.avg_daily_use).toFixed(2) : "--" }),
-    el("td", { text: d != null && isFinite(d) ? `${Math.round(d)}` : "--" }),
+    el("td", { class: "right mono", text: ctx.fmt.num(r.quantity_on_hand) }),
+    el("td", { class: "right mono", text: r.avg_daily_use != null ? Number(r.avg_daily_use).toFixed(2) : "--" }),
+    el("td", { class: "right mono", text: d != null && isFinite(d) ? `${Math.round(d)}` : "--" }),
     el("td", {}, el("span", { class: badge, text: label })),
   ]);
 }
@@ -527,8 +527,8 @@ function renderCostByTask(plot, ctx, data) {
         ])),
         el("tbody", {}, byTask.map(r => el("tr", {}, [
           el("td", { text: r.task }),
-          el("td", { text: ctx.fmt.num(r.tickets) }),
-          el("td", { text: ctx.fmt.num(r.total_qty) }),
+          el("td", { class: "right mono", text: ctx.fmt.num(r.tickets) }),
+          el("td", { class: "right mono", text: ctx.fmt.num(r.total_qty) }),
           el("td", { text: ctx.fmt.money(r.total_cost) }),
           el("td", { text: ctx.fmt.money(r.avg_cost) }),
         ]))),
@@ -549,7 +549,7 @@ function renderCostByTask(plot, ctx, data) {
         ])),
         el("tbody", {}, byPurpose.map(r => el("tr", {}, [
           el("td", { text: r.purpose }),
-          el("td", { text: ctx.fmt.num(r.tickets) }),
+          el("td", { class: "right mono", text: ctx.fmt.num(r.tickets) }),
           el("td", { text: ctx.fmt.money(r.total_cost) }),
         ]))),
       ]),
@@ -673,8 +673,8 @@ function renderTopConsumers(plot, ctx, rows) {
       ])),
       el("tbody", {}, rows.map(r => el("tr", {}, [
         el("td", { text: r.full_name || r.username }),
-        el("td", { text: ctx.fmt.num(r.tickets) }),
-        el("td", { text: ctx.fmt.num(r.total_qty) }),
+        el("td", { class: "right mono", text: ctx.fmt.num(r.tickets) }),
+        el("td", { class: "right mono", text: ctx.fmt.num(r.total_qty) }),
         el("td", { text: ctx.fmt.money(r.total_cost) }),
       ]))),
     ]),

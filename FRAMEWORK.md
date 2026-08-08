@@ -43,7 +43,7 @@ no transpiler, no npm install -- opening `index.html` against a running server
 is the entire deploy story for the client half.
 
 The backend is a single FastAPI app (`app/server.py`) with all routes defined
-in one module, `app/api.py` (roughly 5,200 lines, organized top-to-bottom by
+in one module, `app/api.py` (roughly 7,900 lines, organized top-to-bottom by
 domain -- dashboard, locations, items/consume/restock, alerts, analytics,
 tickets/templates, audit, purchase orders, compatibility, notifications,
 controlled substances, cost-by-task, search, QR labels, users, catalog/
@@ -317,6 +317,12 @@ app/
   api.py       every route, grouped by domain (see Section 1); shared helpers
                live near the top: get_conn(), _rows(), _audit(), _today(),
                _compat_conflicts(conn), _sync_notifications(conn)
+  notify.py    builds the alert digest (grouped text + HTML) and sends it via
+               stdlib smtplib; a no-op when SMTP is unconfigured
+  scheduler.py opt-in daily thread that emails that digest, claiming the day
+               atomically in app_setting so concurrent workers cannot double-send
+  sqlconsole.py read-only SQL console engine: mode=ro handle + SQLite authorizer
+               + secret redaction + row/byte/time caps (see Section 6)
   auth.py      password hashing, session cookie, require_role() dependency,
                demo user provisioning, NLM_AUTH=off bypass
   db.py        SQLite connection factory + init_db() (builds lab.db from
@@ -344,9 +350,12 @@ bounces back to the dashboard.
 
 ## 4. Extending the system
 
-**Add a new view:** create `web/js/newview.js` exporting `view` and
-`render()`, import it in `app.js`, add it to `MODULES` and `ORDER`. No build
-step, no registration elsewhere.
+**Add a new view:** create `web/js/newview.js` exporting `view` (at minimum
+`{id, label, minRole}`) and `render(root, ctx, params)`, import it in `app.js`,
+add the module to `CHILD_MODULES`, and list its id in the relevant hub's `tabs`
+array in `HUB_DEFS`. A view can gate itself behind a config flag with
+`view.requiresConfig` (as the SQL console does). No build step, no registration
+elsewhere.
 
 **Add a new API endpoint:** add a route to `app/api.py` on `router` (or
 `auth_router` if it must work without a session), reuse `get_conn()` /
@@ -371,8 +380,8 @@ header, gated by role, and audited as `entity_type='export'`. Add a row to
 `web/js/reports.js`'s `EXPORTS` list to surface it.
 
 **Known simplifications** (fine for a portfolio POC, worth knowing before you
-lean on them): equipment reservations don't enforce non-overlap at the DB
-layer; the location tree has no depth limit or cycle guard beyond what the
+lean on them): equipment reservations enforce non-overlap in the API rather than
+with a DB constraint; the location tree has no depth limit or cycle guard beyond what the
 UI enforces; SQLite's single-writer model means the guarded-UPDATE pattern
 handles the concurrency this app actually sees but would need a different
 approach (e.g. Postgres row locks) at real multi-writer scale.

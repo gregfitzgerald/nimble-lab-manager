@@ -248,3 +248,49 @@ def test_ordinary_analytics_queries_still_work(db_path):
     )
     assert out["row_count"] > 0
     assert out["columns"] == ["category", "n", "value"]
+
+
+# --------------------------------------------------------------------------- #
+# result marshalling must never produce a 500 or invalid JSON
+# --------------------------------------------------------------------------- #
+def test_non_finite_float_is_returned_as_text(db_path):
+    """json.dumps emits bare Infinity for these, which is not valid JSON."""
+    import json
+    out = sqlconsole.run_query(str(db_path), "SELECT 1e400 AS big")
+    json.dumps(out)  # must not raise
+    assert isinstance(out["rows"][0][0], str)
+
+
+def test_huge_blob_is_summarised_not_returned(db_path):
+    out = sqlconsole.run_query(str(db_path), "SELECT zeroblob(50000000) AS b")
+    assert "bytes>" in str(out["rows"][0][0])
+
+
+def test_huge_string_cell_is_clipped(db_path):
+    out = sqlconsole.run_query(str(db_path), "SELECT hex(zeroblob(5000000)) AS s")
+    assert len(out["rows"][0][0]) <= sqlconsole.MAX_CELL_CHARS + 40
+
+
+def test_byte_budget_truncates_wide_results(db_path):
+    """Row count alone is not enough of a cap when rows can be enormous.
+
+    Each cell is clipped first, so the byte budget only bites on rows that are
+    wide as well as long -- which is exactly the case the row cap misses.
+    """
+    out = sqlconsole.run_query(
+        str(db_path),
+        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i < 900) "
+        "SELECT i, hex(zeroblob(3000)) a, hex(zeroblob(3000)) b, "
+        "hex(zeroblob(3000)) c, hex(zeroblob(3000)) d FROM n",
+        timeout=5.0,
+    )
+    assert out["truncated"] is True
+    assert out["row_count"] < 900
+
+
+def test_sql_console_endpoint_never_500s_on_odd_results(admin):
+    _enable(admin)
+    for sql in ("SELECT 1e400 AS x", "SELECT zeroblob(10000000) AS b", "SELECT NULL AS n"):
+        r = _q(admin, sql)
+        assert r.status_code == 200, f"{sql!r} -> {r.status_code} {r.text[:120]}"
+        r.json()  # response must be parseable JSON

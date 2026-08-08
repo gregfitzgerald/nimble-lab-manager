@@ -110,14 +110,14 @@ export async function render(root, ctx) {
 
       // Order: up/down controls.
       const orderTd = el("td");
-      const upBtn = el("button", "btn btn-ghost btn-sm", "^");
+      const upBtn = el("button", "btn btn-ghost btn-sm", "\u25b2");
       upBtn.title = "Move up";
       upBtn.disabled = idx === 0;
       upBtn.addEventListener("click", () => {
         orderIds.splice(idx - 1, 0, orderIds.splice(idx, 1)[0]);
         paintModules();
       });
-      const downBtn = el("button", "btn btn-ghost btn-sm", "v");
+      const downBtn = el("button", "btn btn-ghost btn-sm", "\u25bc");
       downBtn.title = "Move down";
       downBtn.disabled = idx === orderIds.length - 1;
       downBtn.addEventListener("click", () => {

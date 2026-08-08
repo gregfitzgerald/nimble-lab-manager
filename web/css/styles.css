@@ -288,6 +288,9 @@ a:visited { color: var(--visited); }
 .crumb-seg {
   appearance: none; border: none; background: none; padding: 0;
   font: inherit; font-weight: 700; font-size: 13px; color: var(--text); cursor: pointer;
+  /* The ellipsis on .crumb cannot apply to flex children, so each segment must
+     clip itself -- otherwise a narrow phone hard-cuts a word ("Procurem"). */
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .crumb-seg:hover { text-decoration: underline; }
 .crumb-current { cursor: default; }
@@ -714,15 +717,8 @@ select.chip { cursor: pointer; }
 .toast-ok { border-color: var(--ok); color: var(--ok); }
 .toast-warn { border-color: var(--warn); color: var(--warn); }
 .toast-danger { border-color: var(--danger); color: var(--danger); }
-@keyframes toast-in { from { opacity: 1; } to { opacity: 1; } }
 
 /* ---------------------------------------------------------------- auth */
-.user-chip {
-  color: var(--text-muted);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
 .login-wrap {
   min-height: calc(100vh - 200px);
   display: flex;
@@ -820,15 +816,6 @@ select.chip { cursor: pointer; }
   background: var(--bg-elev);
   border: 1px solid var(--border);
   z-index: 60;
-}
-.search-group {
-  padding: 4px 10px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-  background: var(--accent-soft);
-  border-bottom: 1px solid var(--border);
 }
 .search-item {
   padding: 6px 10px;
@@ -1014,13 +1001,11 @@ textarea:focus-visible,
   .grid-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-/* --- Narrow phone (<=480px): reclaim space in the 42px top bar. Drop the
-   global search, the identity chip, and the demo-reset button so Alerts,
-   Theme, and Logout stay on the bar without overflowing it. */
+/* --- Narrow phone (<=480px): reclaim space in the 42px top bar by dropping the
+   global search (still reachable via the command palette). Everything else now
+   lives inside the account menu, so it costs no bar width. */
 @media (max-width: 480px) {
-  #search-wrap,
-  #user-chip,
-  #reset-btn { display: none !important; }
+  #search-wrap { display: none !important; }
   .topbar { gap: 8px; }
 }
 
@@ -1072,3 +1057,18 @@ textarea:focus-visible,
   gap: 6px;
   margin-top: 8px;
 }
+
+/* Skip link: visually hidden until focused, then pinned top-left. The first
+   thing a keyboard user reaches, so they can bypass the nav entirely. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 200;
+  padding: 6px 10px;
+  background: var(--bg);
+  border: 1px solid var(--fg);
+  color: var(--fg);
+  text-decoration: none;
+}
+.skip-link:focus { left: 8px; top: 8px; }

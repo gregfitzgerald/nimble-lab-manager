@@ -2018,7 +2018,9 @@ def analytics_usage(
             item_name = row["item_name"] if row else None
 
         params = [today, days]
-        where = "e.event_type = 'consume' AND date(e.occurred_at) >= date(?, '-' || ? || ' day')"
+        # Compare the raw column, not date(column): wrapping an indexed column in a
+        # function prevents SQLite using idx_usage_occurred and full-scans the table.
+        where = "e.event_type = 'consume' AND e.occurred_at >= date(?, '-' || ? || ' day')"
         if item_id is not None:
             where += " AND e.item_id = ?"
             params.append(item_id)
@@ -2108,7 +2110,7 @@ def analytics_forecast(days: int = Query(90, ge=1, le=3650)):
                        SELECT item_id, SUM(quantity) AS total_used
                        FROM usage_event
                        WHERE event_type = 'consume'
-                         AND date(occurred_at) >= date(?, '-' || ? || ' day')
+                         AND occurred_at >= date(?, '-' || ? || ' day')
                        GROUP BY item_id
                    ) u ON u.item_id = i.item_id
                    ORDER BY i.item_name""",
@@ -4376,6 +4378,16 @@ def _sync_notifications(conn):
     unread rows), and auto-clears (marks read) any unread broadcast in these
     managed kinds whose condition no longer holds.
     """
+    # This read-then-insert reconciliation is invoked from a GET that several
+    # clients poll concurrently. BEGIN IMMEDIATE takes the write lock up front so
+    # two syncs cannot both observe "no alert exists" and both insert one; the
+    # second simply waits (busy_timeout) and then sees the first one's rows.
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+    except sqlite3.OperationalError:
+        # Already inside a transaction -- the caller owns it, which is fine.
+        pass
+
     today = _today(conn)
     desired = {}  # (kind, entity_type, entity_id) -> {severity, message, link_view}
 
@@ -4526,10 +4538,14 @@ def _sync_notifications(conn):
         if key in existing:
             continue
         conn.execute(
+            # ON CONFLICT DO NOTHING pairs with the UNIQUE partial index on open
+            # broadcasts: if another worker inserted the same alert first, skip it
+            # rather than duplicating (or erroring).
             """INSERT INTO notification
                    (created_at, user_id, kind, severity, message,
                     entity_type, entity_id, link_view, read_at)
-               VALUES (datetime('now'), NULL, ?, ?, ?, ?, ?, ?, NULL)""",
+               VALUES (datetime('now'), NULL, ?, ?, ?, ?, ?, ?, NULL)
+               ON CONFLICT DO NOTHING""",
             (key[0], info["severity"], info["message"], key[1], key[2], info["link_view"]),
         )
 
